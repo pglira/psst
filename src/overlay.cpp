@@ -3,6 +3,12 @@
 #include <algorithm>
 #include <iostream>
 
+#ifdef HAS_X11
+#include <X11/Xlib.h>
+#include <X11/keysym.h>
+#include <gdk/gdkx.h>
+#endif
+
 void OverlayWindow::init(const Config& cfg) {
     cfg_ = cfg;
 
@@ -15,8 +21,9 @@ void OverlayWindow::init(const Config& cfg) {
     gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window_), TRUE);
     gtk_window_set_skip_pager_hint(GTK_WINDOW(window_), TRUE);
     gtk_window_set_position(GTK_WINDOW(window_), GTK_WIN_POS_CENTER);
-    gtk_window_set_type_hint(GTK_WINDOW(window_), GDK_WINDOW_TYPE_HINT_DIALOG);
-    gtk_window_set_accept_focus(GTK_WINDOW(window_), TRUE);
+    gtk_window_set_type_hint(GTK_WINDOW(window_), GDK_WINDOW_TYPE_HINT_NOTIFICATION);
+    gtk_window_set_accept_focus(GTK_WINDOW(window_), FALSE);
+    gtk_window_set_focus_on_map(GTK_WINDOW(window_), FALSE);
 
     GdkScreen* screen = gtk_widget_get_screen(window_);
     GdkVisual* visual = gdk_screen_get_rgba_visual(screen);
@@ -25,11 +32,9 @@ void OverlayWindow::init(const Config& cfg) {
 
     drawing_ = gtk_drawing_area_new();
     gtk_widget_set_size_request(drawing_, 300, 32);
-    gtk_widget_set_can_focus(drawing_, TRUE);
+    gtk_widget_set_can_focus(drawing_, FALSE);
     g_signal_connect(drawing_, "draw", G_CALLBACK(on_draw), this);
     gtk_container_add(GTK_CONTAINER(window_), drawing_);
-
-    g_signal_connect(window_, "key-press-event", G_CALLBACK(on_key), this);
     g_signal_connect(window_, "delete-event",
                      G_CALLBACK(+[](GtkWidget*, GdkEvent*, gpointer) -> gboolean {
                          return TRUE;
@@ -44,8 +49,7 @@ void OverlayWindow::show() {
     level_.store(0.0f);
     last_filled_ = -1;
     gtk_widget_show(window_);
-    gtk_window_present(GTK_WINDOW(window_));
-    gtk_widget_grab_focus(window_);
+    grab_esc();
     if (!timer_id_)
         timer_id_ = g_timeout_add(33, on_tick, this);  // ~30fps
     std::cerr << "[overlay] Shown\n";
@@ -53,9 +57,38 @@ void OverlayWindow::show() {
 
 void OverlayWindow::hide() {
     if (!window_) return;
+    ungrab_esc();
     gtk_widget_hide(window_);
     if (timer_id_) { g_source_remove(timer_id_); timer_id_ = 0; }
     std::cerr << "[overlay] Hidden\n";
+}
+
+void OverlayWindow::grab_esc() {
+#ifdef HAS_X11
+    GdkDisplay* gdk_disp = gdk_display_get_default();
+    Display* dpy = gdk_x11_display_get_xdisplay(gdk_disp);
+    Window root = DefaultRootWindow(dpy);
+    KeyCode esc = XKeysymToKeycode(dpy, XK_Escape);
+    unsigned int lock_masks[] = {0, LockMask, Mod2Mask, LockMask | Mod2Mask};
+    for (auto lm : lock_masks)
+        XGrabKey(dpy, (int)esc, lm, root, False, GrabModeAsync, GrabModeAsync);
+    XFlush(dpy);
+    gdk_window_add_filter(nullptr, esc_x11_filter, this);
+#endif
+}
+
+void OverlayWindow::ungrab_esc() {
+#ifdef HAS_X11
+    GdkDisplay* gdk_disp = gdk_display_get_default();
+    Display* dpy = gdk_x11_display_get_xdisplay(gdk_disp);
+    Window root = DefaultRootWindow(dpy);
+    KeyCode esc = XKeysymToKeycode(dpy, XK_Escape);
+    unsigned int lock_masks[] = {0, LockMask, Mod2Mask, LockMask | Mod2Mask};
+    for (auto lm : lock_masks)
+        XUngrabKey(dpy, (int)esc, lm, root);
+    XFlush(dpy);
+    gdk_window_remove_filter(nullptr, esc_x11_filter, this);
+#endif
 }
 
 bool OverlayWindow::is_visible() const {
@@ -136,12 +169,19 @@ gboolean OverlayWindow::on_tick(gpointer data) {
     return TRUE;
 }
 
-gboolean OverlayWindow::on_key(GtkWidget*, GdkEventKey* event, gpointer data) {
-    if (event->keyval == GDK_KEY_Escape) {
-        auto* self = static_cast<OverlayWindow*>(data);
-        std::cerr << "[overlay] ESC pressed\n";
-        if (self->esc_cb_) self->esc_cb_();
-        return TRUE;
+#ifdef HAS_X11
+GdkFilterReturn OverlayWindow::esc_x11_filter(GdkXEvent* xevent, GdkEvent*, gpointer data) {
+    XEvent* ev = static_cast<XEvent*>(xevent);
+    if (ev->type == KeyPress) {
+        Display* dpy = ev->xkey.display;
+        KeyCode esc = XKeysymToKeycode(dpy, XK_Escape);
+        if (ev->xkey.keycode == esc) {
+            auto* self = static_cast<OverlayWindow*>(data);
+            std::cerr << "[overlay] ESC pressed (global)\n";
+            if (self->esc_cb_) self->esc_cb_();
+            return GDK_FILTER_REMOVE;
+        }
     }
-    return FALSE;
+    return GDK_FILTER_CONTINUE;
 }
+#endif
