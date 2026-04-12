@@ -1,4 +1,4 @@
-# whisper-hotkey configuration
+# psst configuration
 
 [whisper]
 # Path to whisper.cpp model file (ggml format).

@@ -34,5 +34,5 @@ struct Config {
 // Load config from TOML file. Missing fields use defaults.
 Config load_config(const std::string& path);
 
-// Return XDG config path: ~/.config/whisper-hotkey/config.toml
+// Return XDG config path: ~/.config/psst/config.toml
 std::string default_config_path();

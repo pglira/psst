@@ -7,7 +7,7 @@ void OverlayWindow::init(const Config& cfg) {
     cfg_ = cfg;
 
     window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_title(GTK_WINDOW(window_), "whisper-hotkey");
+    gtk_window_set_title(GTK_WINDOW(window_), "psst");
     gtk_window_set_default_size(GTK_WINDOW(window_), 300, 32);
     gtk_window_set_decorated(GTK_WINDOW(window_), FALSE);
     gtk_window_set_resizable(GTK_WINDOW(window_), FALSE);

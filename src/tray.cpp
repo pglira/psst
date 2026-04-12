@@ -23,7 +23,7 @@ bool TrayIcon::init(const Config& cfg, const std::string& icon_dir) {
     impl_ = new Impl;
 
     impl_->indicator = app_indicator_new(
-        "whisper-hotkey",
+        "psst",
         "audio-input-microphone",
         APP_INDICATOR_CATEGORY_APPLICATION_STATUS
     );

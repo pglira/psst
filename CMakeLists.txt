@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(whisper-hotkey LANGUAGES C CXX)
+project(psst LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,7 +47,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(tomlplusplus)
 
 # ── Application ──────────────────────────────────────────────────────
-add_executable(whisper-hotkey
+add_executable(psst
     src/main.cpp
     src/config.cpp
     src/audio.cpp
@@ -58,9 +58,9 @@ add_executable(whisper-hotkey
     src/tray.cpp
 )
 
-target_include_directories(whisper-hotkey PRIVATE src)
+target_include_directories(psst PRIVATE src)
 
-target_link_libraries(whisper-hotkey PRIVATE
+target_link_libraries(psst PRIVATE
     whisper
     tomlplusplus::tomlplusplus
     PkgConfig::GTK3
@@ -70,24 +70,24 @@ target_link_libraries(whisper-hotkey PRIVATE
 
 # Optional X11 support (for global hotkeys on X11)
 if(X11_FOUND)
-    target_link_libraries(whisper-hotkey PRIVATE PkgConfig::X11)
-    target_compile_definitions(whisper-hotkey PRIVATE HAS_X11=1)
+    target_link_libraries(psst PRIVATE PkgConfig::X11)
+    target_compile_definitions(psst PRIVATE HAS_X11=1)
 endif()
 
 # Optional libxdo support (for text injection on X11)
 if(XDO_FOUND)
-    target_link_libraries(whisper-hotkey PRIVATE ${XDO_LIBRARY})
-    target_include_directories(whisper-hotkey PRIVATE ${XDO_INCLUDE_DIR})
-    target_compile_definitions(whisper-hotkey PRIVATE HAS_XDO=1)
+    target_link_libraries(psst PRIVATE ${XDO_LIBRARY})
+    target_include_directories(psst PRIVATE ${XDO_INCLUDE_DIR})
+    target_compile_definitions(psst PRIVATE HAS_XDO=1)
 endif()
 
 # Optional ayatana-appindicator support
 if(AYATANA_FOUND)
-    target_link_libraries(whisper-hotkey PRIVATE PkgConfig::AYATANA)
-    target_compile_definitions(whisper-hotkey PRIVATE HAS_AYATANA=1)
+    target_link_libraries(psst PRIVATE PkgConfig::AYATANA)
+    target_compile_definitions(psst PRIVATE HAS_AYATANA=1)
 endif()
 
 # ── Install ──────────────────────────────────────────────────────────
-install(TARGETS whisper-hotkey RUNTIME DESTINATION bin)
-install(FILES config.toml DESTINATION etc/whisper-hotkey)
-install(DIRECTORY assets/ DESTINATION share/whisper-hotkey/icons)
+install(TARGETS psst RUNTIME DESTINATION bin)
+install(FILES config.toml DESTINATION etc/psst)
+install(DIRECTORY assets/ DESTINATION share/psst/icons)

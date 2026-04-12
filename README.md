@@ -1,4 +1,4 @@
-# whisper-hotkey
+# psst
 
 Voice-to-text for Linux using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
 Press a hotkey to record, release to transcribe, text is pasted at cursor.
@@ -59,23 +59,23 @@ cmake --build build -j$(nproc)
 
 ```bash
 # First run — will auto-download the whisper model (~466 MB for 'small')
-./build/whisper-hotkey
+./build/psst
 
 # With custom config
-./build/whisper-hotkey --config /path/to/config.toml
+./build/psst --config /path/to/config.toml
 
 # Toggle recording from another process (for Wayland WM keybindings)
-./build/whisper-hotkey --toggle
+./build/psst --toggle
 ```
 
 ## Configuration
 
-Config file location: `~/.config/whisper-hotkey/config.toml`
+Config file location: `~/.config/psst/config.toml`
 
 Copy the default config:
 ```bash
-mkdir -p ~/.config/whisper-hotkey
-cp config.toml ~/.config/whisper-hotkey/
+mkdir -p ~/.config/psst
+cp config.toml ~/.config/psst/
 ```
 
 See [config.toml](config.toml) for all options.
@@ -86,12 +86,12 @@ Global hotkeys on pure Wayland (without XWayland) are not supported by the
 X11 hotkey API. Workaround: bind a key in your compositor's config to run:
 
 ```
-whisper-hotkey --toggle
+psst --toggle
 ```
 
 Examples:
-- **Hyprland**: `bind = SUPER, V, exec, whisper-hotkey --toggle`
-- **Sway**: `bindsym Mod4+v exec whisper-hotkey --toggle`
+- **Hyprland**: `bind = SUPER, V, exec, psst --toggle`
+- **Sway**: `bindsym Mod4+v exec psst --toggle`
 
 ## Architecture
 

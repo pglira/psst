@@ -68,7 +68,7 @@ void AudioRecorder::record_loop() {
 
     pa_->stream = pa_simple_new(
         nullptr,            // server
-        "whisper-hotkey",   // app name
+        "psst",   // app name
         PA_STREAM_RECORD,
         dev,                // device
         "recording",        // description

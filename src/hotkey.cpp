@@ -125,7 +125,7 @@ bool HotkeyListener::init(const Config& cfg, Callback on_toggle) {
         std::cerr << "[hotkey] Pure Wayland detected (no XWayland).\n"
                   << "  Global hotkeys are not supported natively.\n"
                   << "  Workaround: bind your compositor key to run:\n"
-                  << "    whisper-hotkey --toggle\n";
+                  << "    psst --toggle\n";
         return false;
     }
 

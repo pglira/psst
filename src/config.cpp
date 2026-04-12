@@ -9,7 +9,7 @@ namespace fs = std::filesystem;
 std::string default_config_path() {
     const char* xdg = std::getenv("XDG_CONFIG_HOME");
     fs::path base = xdg ? fs::path(xdg) : fs::path(std::getenv("HOME")) / ".config";
-    return (base / "whisper-hotkey" / "config.toml").string();
+    return (base / "psst" / "config.toml").string();
 }
 
 Config load_config(const std::string& path) {

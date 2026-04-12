@@ -128,7 +128,7 @@ int main(int argc, char* argv[]) {
     // Handle --toggle flag (sends SIGUSR1 to running instance)
     if (argc > 1 && std::string(argv[1]) == "--toggle") {
         // Find PID from lock file
-        std::string pidfile = "/tmp/whisper-hotkey.pid";
+        std::string pidfile = "/tmp/psst.pid";
         FILE* f = fopen(pidfile.c_str(), "r");
         if (f) {
             int pid = 0;
@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
 
     // Write PID file for --toggle
     {
-        std::string pidfile = "/tmp/whisper-hotkey.pid";
+        std::string pidfile = "/tmp/psst.pid";
         FILE* f = fopen(pidfile.c_str(), "w");
         if (f) {
             fprintf(f, "%d", (int)getpid());
@@ -178,7 +178,7 @@ int main(int argc, char* argv[]) {
     // Init hotkey listener
     if (!g_hotkey.init(g_cfg, on_toggle)) {
         std::cerr << "[app] Failed to init hotkey listener.\n"
-                  << "  You can still use: whisper-hotkey --toggle\n"
+                  << "  You can still use: psst --toggle\n"
                   << "  (bind this command in your compositor/WM)\n";
     }
 
@@ -199,7 +199,7 @@ int main(int argc, char* argv[]) {
     g_tray.shutdown();
 
     // Remove PID file
-    std::remove("/tmp/whisper-hotkey.pid");
+    std::remove("/tmp/psst.pid");
 
     return 0;
 }

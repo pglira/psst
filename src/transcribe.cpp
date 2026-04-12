@@ -16,7 +16,7 @@ static std::string resolve_model_path(const Config& cfg) {
     const char* xdg = std::getenv("XDG_DATA_HOME");
     fs::path base = xdg ? fs::path(xdg)
                         : fs::path(std::getenv("HOME")) / ".local" / "share";
-    fs::path dir = base / "whisper-hotkey" / "models";
+    fs::path dir = base / "psst" / "models";
     std::string filename = "ggml-" + cfg.model_size + ".bin";
     fs::path model = dir / filename;
 
@@ -77,7 +77,7 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
 
     // Save raw audio for debugging
     {
-        const char* dbg = "/tmp/whisper-hotkey-raw.wav";
+        const char* dbg = "/tmp/psst-raw.wav";
         FILE* f = fopen(dbg, "wb");
         if (f) {
             int16_t bps = 16;
@@ -155,7 +155,7 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
 
     // Debug: save WAV for inspection
     {
-        const char* dbg = "/tmp/whisper-hotkey-debug.wav";
+        const char* dbg = "/tmp/psst-debug.wav";
         FILE* f = fopen(dbg, "wb");
         if (f) {
             int16_t bps = 16;
