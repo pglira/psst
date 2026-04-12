@@ -9,7 +9,6 @@ Press a hotkey to record, release to transcribe, text is pasted at cursor.
 - **Real-time VU meter overlay** shown while recording (ESC to cancel)
 - **GPU-accelerated** transcription via whisper.cpp (CUDA)
 - **Paste at cursor** — transcribed text is typed into the focused window
-- **System tray icon** with status indicator
 - **Configurable** via TOML config file
 - **Model loaded once** at startup — runs in background, always ready
 
@@ -21,8 +20,7 @@ Press a hotkey to record, release to transcribe, text is pasted at cursor.
 # Ubuntu/Debian
 sudo apt install -y cmake build-essential pkg-config \
   libgtk-3-dev libpulse-dev \
-  libxdo-dev libx11-dev \
-  libayatana-appindicator3-dev
+  libxdo-dev libx11-dev
 
 # For CUDA support (NVIDIA GPU)
 # Ensure CUDA toolkit is installed (nvcc, libcublas, etc.)
@@ -30,8 +28,7 @@ sudo apt install -y cmake build-essential pkg-config \
 # Fedora
 sudo dnf install -y cmake gcc-c++ pkg-config \
   gtk3-devel pulseaudio-libs-devel \
-  libxdo-devel libX11-devel \
-  libayatana-appindicator-gtk3-devel
+  libxdo-devel libX11-devel
 ```
 
 ### Runtime
@@ -96,21 +93,17 @@ Examples:
 ## Architecture
 
 ```
-┌────────────────────────────────────────────────────┐
-│  main.cpp — GTK3 Application + GLib main loop      │
-│                                                     │
-│  ┌──────────┐  ┌───────────┐  ┌──────────────────┐ │
-│  │ hotkey   │→ │ audio     │→ │ transcribe       │ │
-│  │ listener │  │ recorder  │  │ (whisper.cpp GPU) │ │
-│  └──────────┘  └─────┬─────┘  └────────┬─────────┘ │
-│                      │                  │           │
-│               ┌──────▼──────┐    ┌──────▼──────┐   │
-│               │ overlay     │    │ inject      │   │
-│               │ (spectrum)  │    │ (paste text)│   │
-│               └─────────────┘    └─────────────┘   │
-│                                                     │
-│  ┌──────────────────────────────────────────────┐   │
-│  │ tray icon (ayatana-appindicator)             │   │
-│  └──────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  main.cpp — GTK3 Application + GLib main loop    │
+│                                                  │
+│  ┌──────────┐  ┌───────────┐  ┌────────────────┐ │
+│  │ hotkey   │→ │ audio     │→ │ transcribe     │ │
+│  │ listener │  │ recorder  │  │ (whisper.cpp)  │ │
+│  └──────────┘  └─────┬─────┘  └───────┬────────┘ │
+│                      │                │          │
+│               ┌──────▼──────┐  ┌──────▼──────┐   │
+│               │ overlay     │  │ inject      │   │
+│               │ (VU meter)  │  │ (paste text)│   │
+│               └─────────────┘  └─────────────┘   │
+└──────────────────────────────────────────────────┘
 ```
