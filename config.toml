@@ -1,0 +1,53 @@
+# whisper-hotkey configuration
+
+[whisper]
+# Path to whisper.cpp model file (ggml format).
+# Download from: https://huggingface.co/ggerganov/whisper.cpp/tree/main
+# Leave empty to auto-download the model specified by 'model_size'.
+model_path = ""
+
+# Model size: tiny, base, small, medium, large-v3
+model_size = "small"
+
+# Language code (e.g. "en", "de", "auto" for auto-detect)
+language = "auto"
+
+# Enable translate mode (translate to English)
+translate = false
+
+# Number of processing threads (0 = auto)
+threads = 0
+
+[gpu]
+# Use GPU acceleration (requires CUDA build)
+enabled = true
+
+# GPU device index (0 = first GPU)
+device = 0
+
+[hotkey]
+# Keybinding to toggle recording.
+# Format: modifier+key (e.g. "super+v", "ctrl+shift+v")
+bind = "super+v"
+
+[audio]
+# PulseAudio source name (empty = default microphone)
+device = ""
+
+# Sample rate in Hz (16000 required by whisper, PulseAudio resamples automatically)
+sample_rate = 16000
+
+[overlay]
+# Window width and height in pixels
+width = 400
+height = 150
+
+# Background opacity (0.0 = fully transparent, 1.0 = fully opaque)
+opacity = 0.85
+
+# Number of frequency bars in the spectrum display
+bars = 32
+
+[tray]
+# Enable system tray icon (requires ayatana-appindicator)
+enabled = true
