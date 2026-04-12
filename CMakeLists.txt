@@ -14,7 +14,6 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK3 REQUIRED IMPORTED_TARGET gtk+-3.0)
 pkg_check_modules(PULSE REQUIRED IMPORTED_TARGET libpulse-simple)
 pkg_check_modules(X11 IMPORTED_TARGET x11)
-pkg_check_modules(AYATANA IMPORTED_TARGET ayatana-appindicator3-0.1)
 
 # libxdo has no pkg-config file
 find_library(XDO_LIBRARY xdo)
@@ -55,7 +54,6 @@ add_executable(psst
     src/overlay.cpp
     src/transcribe.cpp
     src/inject.cpp
-    src/tray.cpp
 )
 
 target_include_directories(psst PRIVATE src)
@@ -81,13 +79,9 @@ if(XDO_FOUND)
     target_compile_definitions(psst PRIVATE HAS_XDO=1)
 endif()
 
-# Optional ayatana-appindicator support
-if(AYATANA_FOUND)
-    target_link_libraries(psst PRIVATE PkgConfig::AYATANA)
-    target_compile_definitions(psst PRIVATE HAS_AYATANA=1)
-endif()
+
 
 # ── Install ──────────────────────────────────────────────────────────
 install(TARGETS psst RUNTIME DESTINATION bin)
 install(FILES config.toml DESTINATION etc/psst)
-install(DIRECTORY assets/ DESTINATION share/psst/icons)
+

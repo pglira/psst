@@ -4,7 +4,6 @@
 #include "overlay.h"
 #include "transcribe.h"
 #include "inject.h"
-#include "tray.h"
 
 #include <gtk/gtk.h>
 #include <iostream>
@@ -21,7 +20,6 @@ static AudioRecorder g_audio;
 static HotkeyListener g_hotkey;
 static OverlayWindow g_overlay;
 static Transcriber  g_whisper;
-static TrayIcon     g_tray;
 static std::atomic<bool> g_recording{false};
 
 // ── Toggle recording ────────────────────────────────────────────────
@@ -33,19 +31,16 @@ static void on_toggle() {
             g_recording.store(true);
             g_audio.start();
             g_overlay.show();
-            g_tray.set_state(TrayIcon::State::Recording);
             std::cerr << "[app] Recording started\n";
         } else {
             // Stop recording → transcribe → inject
             g_recording.store(false);
             g_overlay.hide();
-            g_tray.set_state(TrayIcon::State::Transcribing);
             std::cerr << "[app] Recording stopped, transcribing...\n";
 
             auto samples = g_audio.stop();
             if (samples.empty()) {
                 std::cerr << "[app] No audio recorded\n";
-                g_tray.set_state(TrayIcon::State::Idle);
                 return FALSE;
             }
 
@@ -58,11 +53,7 @@ static void on_toggle() {
                 } else {
                     std::cerr << "[app] Empty transcription result\n";
                 }
-                // Update tray back to idle on main thread
-                g_idle_add(+[](gpointer) -> gboolean {
-                    g_tray.set_state(TrayIcon::State::Idle);
-                    return FALSE;
-                }, nullptr);
+
             }).detach();
         }
         return FALSE; // one-shot idle callback
@@ -75,7 +66,6 @@ static void on_cancel() {
         g_recording.store(false);
         g_audio.cancel();
         g_overlay.hide();
-        g_tray.set_state(TrayIcon::State::Idle);
         std::cerr << "[app] Recording cancelled\n";
     }
 }
@@ -98,25 +88,6 @@ static void setup_gtk() {
 
     // Start hotkey listener
     g_hotkey.start();
-
-    // Init tray icon
-    std::string icon_dir;
-    // Try to find assets directory relative to executable
-    {
-        char buf[4096];
-        ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
-        if (len > 0) {
-            buf[len] = '\0';
-            fs::path exe_dir = fs::path(buf).parent_path();
-            fs::path assets  = exe_dir / "assets";
-            if (fs::is_directory(assets))
-                icon_dir = assets.string();
-        }
-    }
-    g_tray.init(g_cfg, icon_dir);
-    g_tray.set_quit_callback([]() {
-        gtk_main_quit();
-    });
 
     std::cerr << "[app] Ready — press " << g_cfg.hotkey_bind
               << " to start recording\n";
@@ -195,7 +166,6 @@ int main(int argc, char* argv[]) {
     g_hotkey.stop();
     g_audio.shutdown();
     g_whisper.shutdown();
-    g_tray.shutdown();
 
     // Remove PID file
     std::remove("/tmp/psst.pid");

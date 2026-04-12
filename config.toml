@@ -37,6 +37,3 @@ device = ""
 # Sample rate in Hz (16000 required by whisper, PulseAudio resamples automatically)
 sample_rate = 16000
 
-[tray]
-# Enable system tray icon (requires ayatana-appindicator)
-enabled = true
