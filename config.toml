@@ -37,17 +37,6 @@ device = ""
 # Sample rate in Hz (16000 required by whisper, PulseAudio resamples automatically)
 sample_rate = 16000
 
-[overlay]
-# Window width and height in pixels
-width = 400
-height = 150
-
-# Background opacity (0.0 = fully transparent, 1.0 = fully opaque)
-opacity = 0.85
-
-# Number of frequency bars in the spectrum display
-bars = 32
-
 [tray]
 # Enable system tray icon (requires ayatana-appindicator)
 enabled = true

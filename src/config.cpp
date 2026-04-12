@@ -42,12 +42,6 @@ Config load_config(const std::string& path) {
         cfg.audio_device = tbl["audio"]["device"].value_or(cfg.audio_device);
         cfg.sample_rate  = tbl["audio"]["sample_rate"].value_or(cfg.sample_rate);
 
-        // overlay
-        cfg.overlay_width   = tbl["overlay"]["width"].value_or(cfg.overlay_width);
-        cfg.overlay_height  = tbl["overlay"]["height"].value_or(cfg.overlay_height);
-        cfg.overlay_opacity = tbl["overlay"]["opacity"].value_or(cfg.overlay_opacity);
-        cfg.overlay_bars    = tbl["overlay"]["bars"].value_or(cfg.overlay_bars);
-
         // tray
         cfg.tray_enabled = tbl["tray"]["enabled"].value_or(cfg.tray_enabled);
 

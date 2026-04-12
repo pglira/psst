@@ -52,8 +52,7 @@ static void on_toggle() {
             // Run transcription in a thread to keep UI responsive
             std::thread([samples = std::move(samples)]() {
                 std::string text = g_whisper.transcribe(samples);
-                std::cerr << "[app] Transcription done, text='" << text
-                          << "' (" << text.size() << " chars)\n";
+                std::cerr << "[app] Transcription done (" << text.size() << " chars)\n";
                 if (!text.empty()) {
                     inject_text(text);
                 } else {

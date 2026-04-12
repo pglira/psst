@@ -6,7 +6,7 @@ Press a hotkey to record, release to transcribe, text is pasted at cursor.
 ## Features
 
 - **Global hotkey** (default: `Super+V`) to toggle recording
-- **Real-time spectrum overlay** shown while recording (ESC to cancel)
+- **Real-time VU meter overlay** shown while recording (ESC to cancel)
 - **GPU-accelerated** transcription via whisper.cpp (CUDA)
 - **Paste at cursor** — transcribed text is typed into the focused window
 - **System tray icon** with status indicator
@@ -20,7 +20,7 @@ Press a hotkey to record, release to transcribe, text is pasted at cursor.
 ```bash
 # Ubuntu/Debian
 sudo apt install -y cmake build-essential pkg-config \
-  libgtk-4-dev libpulse-dev libfftw3-dev \
+  libgtk-3-dev libpulse-dev \
   libxdo-dev libx11-dev \
   libayatana-appindicator3-dev
 
@@ -29,7 +29,7 @@ sudo apt install -y cmake build-essential pkg-config \
 
 # Fedora
 sudo dnf install -y cmake gcc-c++ pkg-config \
-  gtk4-devel pulseaudio-libs-devel fftw-devel \
+  gtk3-devel pulseaudio-libs-devel \
   libxdo-devel libX11-devel \
   libayatana-appindicator-gtk3-devel
 ```
@@ -97,7 +97,7 @@ Examples:
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  main.cpp — GTK4 Application + GLib main loop      │
+│  main.cpp — GTK3 Application + GLib main loop      │
 │                                                     │
 │  ┌──────────┐  ┌───────────┐  ┌──────────────────┐ │
 │  │ hotkey   │→ │ audio     │→ │ transcribe       │ │

@@ -75,33 +75,6 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
 
     std::vector<float> pcm = pcm_raw;
 
-    // Save raw audio for debugging
-    {
-        const char* dbg = "/tmp/psst-raw.wav";
-        FILE* f = fopen(dbg, "wb");
-        if (f) {
-            int16_t bps = 16;
-            int32_t sr = 16000, byteRate = sr * 2, dataSize = (int32_t)(pcm.size() * 2);
-            int16_t blockAlign = 2, channels = 1;
-            int32_t chunkSize = 36 + dataSize;
-            fwrite("RIFF", 1, 4, f); fwrite(&chunkSize, 4, 1, f);
-            fwrite("WAVEfmt ", 1, 8, f);
-            int32_t sc1 = 16; int16_t fmt = 1;
-            fwrite(&sc1, 4, 1, f); fwrite(&fmt, 2, 1, f);
-            fwrite(&channels, 2, 1, f); fwrite(&sr, 4, 1, f);
-            fwrite(&byteRate, 4, 1, f); fwrite(&blockAlign, 2, 1, f);
-            fwrite(&bps, 2, 1, f);
-            fwrite("data", 1, 4, f); fwrite(&dataSize, 4, 1, f);
-            for (size_t i = 0; i < pcm.size(); ++i) {
-                float clamped = std::max(-1.0f, std::min(1.0f, pcm[i]));
-                int16_t s = (int16_t)(clamped * 32767.0f);
-                fwrite(&s, 2, 1, f);
-            }
-            fclose(f);
-            std::cerr << "[whisper] Raw WAV saved to " << dbg << "\n";
-        }
-    }
-
     // 1. Remove DC offset
     float dc = 0.0f;
     for (size_t i = 0; i < pcm.size(); ++i)
@@ -109,7 +82,6 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
     dc /= (float)pcm.size();
     for (size_t i = 0; i < pcm.size(); ++i)
         pcm[i] -= dc;
-    std::cerr << "[whisper] DC offset removed: " << dc << "\n";
 
     // 2. Normalize to [-1, 1] range
     float peak = 0.0f;
@@ -122,21 +94,7 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
         float scale = 0.9f / peak;
         for (size_t i = 0; i < pcm.size(); ++i)
             pcm[i] *= scale;
-        std::cerr << "[whisper] Normalized audio: peak=" << peak
-                  << " scale=" << scale << "\n";
     }
-
-    // Audio diagnostics (post-normalization)
-    float mn = 0, mx = 0, rms = 0;
-    for (size_t i = 0; i < pcm.size(); ++i) {
-        float s = pcm[i];
-        if (s < mn) mn = s;
-        if (s > mx) mx = s;
-        rms += s * s;
-    }
-    rms = sqrtf(rms / (float)pcm.size());
-    std::cerr << "[whisper] Audio stats: min=" << mn << " max=" << mx
-              << " rms=" << rms << " samples=" << pcm.size() << "\n";
 
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
     params.print_progress   = false;
@@ -152,33 +110,6 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
 
     std::cerr << "[whisper] Transcribing " << pcm.size() / 16000.0f
               << "s of audio...\n";
-
-    // Debug: save WAV for inspection
-    {
-        const char* dbg = "/tmp/psst-debug.wav";
-        FILE* f = fopen(dbg, "wb");
-        if (f) {
-            int16_t bps = 16;
-            int32_t sr = 16000, byteRate = sr * 2, dataSize = (int32_t)(pcm.size() * 2);
-            int16_t blockAlign = 2, channels = 1;
-            int32_t chunkSize = 36 + dataSize;
-            fwrite("RIFF", 1, 4, f); fwrite(&chunkSize, 4, 1, f);
-            fwrite("WAVEfmt ", 1, 8, f);
-            int32_t sc1 = 16; int16_t fmt = 1;
-            fwrite(&sc1, 4, 1, f); fwrite(&fmt, 2, 1, f);
-            fwrite(&channels, 2, 1, f); fwrite(&sr, 4, 1, f);
-            fwrite(&byteRate, 4, 1, f); fwrite(&blockAlign, 2, 1, f);
-            fwrite(&bps, 2, 1, f);
-            fwrite("data", 1, 4, f); fwrite(&dataSize, 4, 1, f);
-            for (size_t i = 0; i < pcm.size(); ++i) {
-                float clamped = std::max(-1.0f, std::min(1.0f, pcm[i]));
-                int16_t s = (int16_t)(clamped * 32767.0f);
-                fwrite(&s, 2, 1, f);
-            }
-            fclose(f);
-            std::cerr << "[whisper] Debug WAV saved to " << dbg << "\n";
-        }
-    }
 
     std::lock_guard<std::mutex> lock(mtx_);
     busy_.store(true);

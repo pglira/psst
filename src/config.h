@@ -21,12 +21,6 @@ struct Config {
     std::string audio_device;
     int         sample_rate = 16000;
 
-    // overlay
-    int   overlay_width   = 400;
-    int   overlay_height  = 150;
-    float overlay_opacity = 0.85f;
-    int   overlay_bars    = 32;
-
     // tray
     bool tray_enabled = true;
 };
