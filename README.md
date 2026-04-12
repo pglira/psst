@@ -1,7 +1,7 @@
 # psst
 
 Voice-to-text for Linux using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
-Press a hotkey to record, release to transcribe, text is pasted at cursor.
+Press a hotkey to record, press it again to transcribe, text is pasted at cursor.
 
 ## Features
 
