@@ -84,3 +84,19 @@ void inject_text(const std::string& text) {
     else
         inject_x11(text);
 }
+
+void inject_clipboard(const std::string& text) {
+    if (text.empty()) return;
+
+    std::string session = HotkeyListener::detect_session();
+    const char* cmd = (session == "wayland") ? "wl-copy" : "xclip -selection clipboard";
+
+    FILE* proc = popen(cmd, "w");
+    if (!proc) {
+        std::cerr << "[inject] Failed to run " << cmd << "\n";
+        return;
+    }
+    fwrite(text.data(), 1, text.size(), proc);
+    pclose(proc);
+    std::cerr << "[inject] Copied to clipboard (" << text.size() << " chars)\n";
+}

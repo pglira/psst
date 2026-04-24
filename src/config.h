@@ -17,6 +17,9 @@ struct Config {
     // hotkey
     std::string hotkey_bind = "super+v";
 
+    // output
+    bool copy_to_clipboard = false;
+
     // audio
     std::string audio_device;
     int         sample_rate = 16000;

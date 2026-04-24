@@ -50,6 +50,8 @@ static void on_toggle() {
                 std::cerr << "[app] Transcription done (" << text.size() << " chars)\n";
                 if (!text.empty()) {
                     inject_text(text);
+                    if (g_cfg.copy_to_clipboard)
+                        inject_clipboard(text);
                 } else {
                     std::cerr << "[app] Empty transcription result\n";
                 }

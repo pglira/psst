@@ -38,6 +38,9 @@ Config load_config(const std::string& path) {
         // hotkey
         cfg.hotkey_bind = tbl["hotkey"]["bind"].value_or(cfg.hotkey_bind);
 
+        // output
+        cfg.copy_to_clipboard = tbl["output"]["copy_to_clipboard"].value_or(cfg.copy_to_clipboard);
+
         // audio
         cfg.audio_device = tbl["audio"]["device"].value_or(cfg.audio_device);
         cfg.sample_rate  = tbl["audio"]["sample_rate"].value_or(cfg.sample_rate);

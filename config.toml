@@ -30,6 +30,10 @@ device = 0
 # Format: modifier+key (e.g. "super+v", "ctrl+shift+v")
 bind = "super+v"
 
+[output]
+# Also copy transcribed text to the system clipboard
+copy_to_clipboard = false
+
 [audio]
 # PulseAudio source name (empty = default microphone)
 device = ""
