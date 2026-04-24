@@ -14,7 +14,7 @@ void OverlayWindow::init(const Config& cfg) {
 
     window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window_), "psst");
-    gtk_window_set_default_size(GTK_WINDOW(window_), 300, 32);
+    gtk_window_set_default_size(GTK_WINDOW(window_), 320, 52);
     gtk_window_set_decorated(GTK_WINDOW(window_), FALSE);
     gtk_window_set_resizable(GTK_WINDOW(window_), FALSE);
     gtk_window_set_keep_above(GTK_WINDOW(window_), TRUE);
@@ -31,7 +31,7 @@ void OverlayWindow::init(const Config& cfg) {
     gtk_widget_set_app_paintable(window_, TRUE);
 
     drawing_ = gtk_drawing_area_new();
-    gtk_widget_set_size_request(drawing_, 300, 32);
+    gtk_widget_set_size_request(drawing_, 320, 52);
     gtk_widget_set_can_focus(drawing_, FALSE);
     g_signal_connect(drawing_, "draw", G_CALLBACK(on_draw), this);
     gtk_container_add(GTK_CONTAINER(window_), drawing_);
@@ -117,15 +117,17 @@ gboolean OverlayWindow::on_draw(GtkWidget* widget, cairo_t* cr, gpointer data) {
     cairo_paint(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
+    double pad = 10.0;
+
     // Red dot + "REC"
     cairo_select_font_face(cr, "monospace", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
     cairo_set_font_size(cr, 14.0);
     cairo_set_source_rgb(cr, 1.0, 0.27, 0.27);
-    cairo_move_to(cr, 10, h / 2.0 + 5);
+    cairo_move_to(cr, pad + 10, h / 2.0 + 5);
     cairo_show_text(cr, "\xe2\x97\x8f REC");
 
     // Meter: 20 colored segments
-    double mx = 75, my = 6, mw = (double)w - mx - 10, mh = (double)h - 12;
+    double mx = pad + 75, my = pad + 6, mw = (double)w - mx - pad - 10, mh = (double)h - 2.0 * pad - 12;
     int bars = 20;
     int filled = (int)(lvl * (float)bars);
     if (filled > bars) filled = bars;
@@ -149,8 +151,15 @@ gboolean OverlayWindow::on_draw(GtkWidget* widget, cairo_t* cr, gpointer data) {
     // "ESC" hint at bottom-right
     cairo_set_font_size(cr, 10.0);
     cairo_set_source_rgba(cr, 0.5, 0.5, 0.5, 0.7);
-    cairo_move_to(cr, (double)w - 70, h - 3);
+    cairo_move_to(cr, (double)w - pad - 70, h - pad - 3);
     cairo_show_text(cr, "ESC cancel");
+
+    // Border
+    double border = 3.0;
+    cairo_set_source_rgb(cr, 0.0 / 255.0, 114.0 / 255.0, 163.0 / 255.0);  // #0072a3
+    cairo_set_line_width(cr, border);
+    cairo_rectangle(cr, border / 2.0, border / 2.0, w - border, h - border);
+    cairo_stroke(cr);
 
     return FALSE;
 }
