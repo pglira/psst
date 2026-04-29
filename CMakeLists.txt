@@ -54,6 +54,7 @@ add_executable(psst
     src/overlay.cpp
     src/transcribe.cpp
     src/inject.cpp
+    src/sound.cpp
 )
 
 target_include_directories(psst PRIVATE src)
