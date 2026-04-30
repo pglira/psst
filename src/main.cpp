@@ -4,7 +4,6 @@
 #include "overlay.h"
 #include "transcribe.h"
 #include "inject.h"
-#include "sound.h"
 
 #include <gtk/gtk.h>
 #include <iostream>
@@ -30,14 +29,12 @@ static void on_toggle() {
         if (!g_recording.load()) {
             // Start recording
             g_recording.store(true);
-            sound_play_activate();
             g_audio.start();
             g_overlay.show();
             std::cerr << "[app] Recording started\n";
         } else {
             // Stop recording → transcribe → inject
             g_recording.store(false);
-            sound_play_deactivate();
             g_overlay.hide();
             std::cerr << "[app] Recording stopped, transcribing...\n";
 
@@ -69,7 +66,6 @@ static void on_toggle() {
 static void on_cancel() {
     if (g_recording.load()) {
         g_recording.store(false);
-        sound_play_deactivate();
         g_audio.cancel();
         g_overlay.hide();
         std::cerr << "[app] Recording cancelled\n";
@@ -125,7 +121,6 @@ int main(int argc, char* argv[]) {
         config_path = argv[2];
 
     g_cfg = load_config(config_path);
-    sound_set_enabled(g_cfg.sound_enabled);
 
     // Write PID file for --toggle
     {

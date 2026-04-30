@@ -23,9 +23,6 @@ struct Config {
     // audio
     std::string audio_device;
     int         sample_rate = 16000;
-
-    // sound
-    bool sound_enabled = true;
 };
 
 // Load config from TOML file. Missing fields use defaults.

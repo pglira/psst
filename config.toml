@@ -41,7 +41,3 @@ device = ""
 # Sample rate in Hz (16000 required by whisper, PulseAudio resamples automatically)
 sample_rate = 16000
 
-[sound]
-# Play a short chirp when the overlay appears (rising) and disappears (falling).
-enabled = true
-

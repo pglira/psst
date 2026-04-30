@@ -45,9 +45,6 @@ Config load_config(const std::string& path) {
         cfg.audio_device = tbl["audio"]["device"].value_or(cfg.audio_device);
         cfg.sample_rate  = tbl["audio"]["sample_rate"].value_or(cfg.sample_rate);
 
-        // sound
-        cfg.sound_enabled = tbl["sound"]["enabled"].value_or(cfg.sound_enabled);
-
         std::cerr << "[config] Loaded from " << path << "\n";
     } catch (const toml::parse_error& err) {
         std::cerr << "[config] Parse error in " << path << ": " << err << "\n";
