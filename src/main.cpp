@@ -49,7 +49,7 @@ static void on_toggle() {
                 std::string text = g_whisper.transcribe(samples);
                 std::cerr << "[app] Transcription done (" << text.size() << " chars)\n";
                 if (!text.empty()) {
-                    inject_text(text);
+                    inject_text(text, g_cfg.type_delay_ms);
                     if (g_cfg.copy_to_clipboard)
                         inject_clipboard(text);
                 } else {

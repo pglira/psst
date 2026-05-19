@@ -20,6 +20,9 @@ struct Config {
     // output
     bool copy_to_clipboard = false;
 
+    // inject
+    int type_delay_ms = 12;
+
     // audio
     std::string audio_device;
     int         sample_rate = 16000;

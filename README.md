@@ -34,9 +34,13 @@ sudo dnf install -y cmake gcc-c++ pkg-config \
 ### Runtime
 
 ```bash
-# For text injection
-sudo apt install xdotool xclip    # X11
-sudo apt install wtype wl-clipboard  # Wayland
+# For text injection (typing)
+sudo apt install xdotool          # X11
+sudo apt install wtype            # Wayland
+
+# Optional — only needed if [output] copy_to_clipboard = true
+sudo apt install xclip            # X11
+sudo apt install wl-clipboard     # Wayland
 ```
 
 ## Build

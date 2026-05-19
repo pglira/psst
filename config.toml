@@ -34,6 +34,12 @@ bind = "super+v"
 # Also copy transcribed text to the system clipboard
 copy_to_clipboard = false
 
+[inject]
+# Inter-keystroke delay in milliseconds when typing the transcript.
+# 0 = instant (may drop chars in some apps). 12 = xdotool's default (reliable).
+# Only applies on X11; on Wayland wtype uses its native pace.
+type_delay_ms = 12
+
 [audio]
 # PulseAudio source name (empty = default microphone)
 device = ""

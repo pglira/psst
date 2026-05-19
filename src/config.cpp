@@ -41,6 +41,9 @@ Config load_config(const std::string& path) {
         // output
         cfg.copy_to_clipboard = tbl["output"]["copy_to_clipboard"].value_or(cfg.copy_to_clipboard);
 
+        // inject
+        cfg.type_delay_ms = tbl["inject"]["type_delay_ms"].value_or(cfg.type_delay_ms);
+
         // audio
         cfg.audio_device = tbl["audio"]["device"].value_or(cfg.audio_device);
         cfg.sample_rate  = tbl["audio"]["sample_rate"].value_or(cfg.sample_rate);
