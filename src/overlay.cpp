@@ -47,6 +47,7 @@ void OverlayWindow::init(const Config& cfg) {
 void OverlayWindow::show() {
     if (!window_) return;
     level_.store(0.0f);
+    peak_db_ = kNoiseFloorDb;  // don't carry the previous recording's scale over
     last_filled_ = -1;
     gtk_widget_show(window_);
     grab_esc();
@@ -96,11 +97,26 @@ bool OverlayWindow::is_visible() const {
 }
 
 void OverlayWindow::push_samples(const float* data, size_t count) {
+    if (count == 0) return;
+
     float sum = 0.0f;
     for (size_t i = 0; i < count; ++i)
         sum += data[i] * data[i];
     float rms = sqrtf(sum / (float)count);
-    float lvl = std::min(1.0f, rms * 3.0f);
+
+    float db = 20.0f * log10f(rms + 1e-9f);  // dBFS; +eps avoids log(0)
+
+    // Auto-scale to a dB window below a decaying peak so the meter fills
+    // regardless of mic gain; kNoiseFloorDb keeps a silent pause empty.
+    peak_db_ = std::max(db, peak_db_ - 0.5f);  // 0.5 dB/chunk = ~10 dB/s at 20 chunks/s
+    float top_db = std::max(peak_db_, kNoiseFloorDb);
+    constexpr float window_db = 30.0f;
+    float lvl = std::clamp((db - (top_db - window_db)) / window_db, 0.0f, 1.0f);
+
+    // Fast attack, slow decay so the bar tracks peaks but eases down.
+    float prev = level_.load();
+    if (lvl < prev)
+        lvl = prev * 0.7f + lvl * 0.3f;
     level_.store(lvl);
 }
 

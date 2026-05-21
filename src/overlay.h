@@ -32,8 +32,13 @@ private:
     GtkWidget* drawing_ = nullptr;
     guint timer_id_ = 0;
 
+    // Below this dBFS the meter reads empty; also the auto-scale window's
+    // lowest possible top, so a silent pause can't fill the bar with noise.
+    static constexpr float kNoiseFloorDb = -25.0f;
+
     std::atomic<float> level_{0.0f};
-    int last_filled_ = -1;  // cache to skip redundant redraws
+    float peak_db_ = kNoiseFloorDb;  // decaying peak for auto-scaling (audio thread only)
+    int last_filled_ = -1;           // cache to skip redundant redraws
 
     EscCallback esc_cb_;
 };
