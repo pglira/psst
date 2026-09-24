@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <cstdint>
+#include <map>
 
 struct Config {
     // whisper
@@ -9,6 +10,11 @@ struct Config {
     std::string language   = "auto";
     bool        translate  = false;
     int         threads    = 0;
+    std::string initial_prompt;
+
+    // punctuation (spoken commands → symbols)
+    bool punctuation_enabled = true;
+    std::map<std::string, std::string> punctuation_words;  // phrase → text
 
     // gpu
     bool gpu_enabled = true;

@@ -104,6 +104,8 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
 
     params.language = cfg_.language == "auto" ? "auto" : cfg_.language.c_str();
     params.translate = cfg_.translate;
+    if (!cfg_.initial_prompt.empty())
+        params.initial_prompt = cfg_.initial_prompt.c_str();
 
     if (cfg_.threads > 0)
         params.n_threads = cfg_.threads;

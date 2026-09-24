@@ -30,6 +30,16 @@ Config load_config(const std::string& path) {
         cfg.language    = tbl["whisper"]["language"].value_or(cfg.language);
         cfg.translate   = tbl["whisper"]["translate"].value_or(cfg.translate);
         cfg.threads     = tbl["whisper"]["threads"].value_or(cfg.threads);
+        cfg.initial_prompt = tbl["whisper"]["initial_prompt"].value_or(cfg.initial_prompt);
+
+        // punctuation
+        cfg.punctuation_enabled = tbl["punctuation"]["enabled"].value_or(cfg.punctuation_enabled);
+        if (auto words = tbl["punctuation"]["words"].as_table()) {
+            for (const auto& [phrase, value] : *words) {
+                if (auto text = value.value<std::string>())
+                    cfg.punctuation_words[std::string(phrase.str())] = *text;
+            }
+        }
 
         // gpu
         cfg.gpu_enabled = tbl["gpu"]["enabled"].value_or(cfg.gpu_enabled);

@@ -18,6 +18,29 @@ translate = false
 # Number of processing threads (0 = auto)
 threads = 0
 
+# Text that biases the transcription style. Punctuated text such as
+# "Note: first – second; third (optional)." makes Whisper punctuate more.
+# Empty = no prompt.
+initial_prompt = ""
+
+[punctuation]
+# Replace spoken commands (e.g. "colon", "Doppelpunkt") with symbols.
+# Built-in commands:
+#   English: period, full stop, comma, colon, semicolon, question mark,
+#            exclamation mark, exclamation point, dash, hyphen, new line,
+#            newline, new paragraph, open/close bracket, open/close parenthesis
+#   German:  Punkt, Komma, Doppelpunkt, Semikolon, Strichpunkt, Fragezeichen,
+#            Ausrufezeichen, Gedankenstrich, Bindestrich, neue Zeile,
+#            neuer Absatz, Klammer auf, Klammer zu
+enabled = true
+
+[punctuation.words]
+# Add or override commands: "spoken phrase" = "inserted text".
+# The inserted text includes its spacing, e.g. ": " or " (".
+# An empty value disables a built-in command.
+# "slash" = "/"
+# "Punkt" = ""
+
 [gpu]
 # Use GPU acceleration (requires CUDA build)
 enabled = true

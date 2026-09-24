@@ -4,6 +4,7 @@
 #include "overlay.h"
 #include "transcribe.h"
 #include "inject.h"
+#include "punctuate.h"
 
 #include <gtk/gtk.h>
 #include <iostream>
@@ -47,6 +48,10 @@ static void on_toggle() {
             // Run transcription in a thread to keep UI responsive
             std::thread([samples = std::move(samples)]() {
                 std::string text = g_whisper.transcribe(samples);
+                if (g_cfg.punctuation_enabled && !text.empty()) {
+                    text = apply_punctuation(text, g_cfg.punctuation_words);
+                    std::cerr << "[punctuate] Result: \"" << text << "\"\n";
+                }
                 std::cerr << "[app] Transcription done (" << text.size() << " chars)\n";
                 if (!text.empty()) {
                     inject_text(text, g_cfg.type_delay_ms);
