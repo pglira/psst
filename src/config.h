@@ -26,6 +26,22 @@ struct Config {
     std::string editor_pause_key = "<Control>space";
     std::string editor_type_key  = "<Control>Return";
     std::string editor_copy_key  = "<Control><Shift>Return";
+    std::string editor_correct_key = "<Control>r";
+    std::string editor_undo_key    = "<Control>z";
+
+    // correction (LLM correction of the editor text with the claude CLI)
+    std::string correction_command = "claude";
+    std::string correction_model   = "haiku";
+    std::string correction_prompt  =
+        "You correct text from speech recognition. Fix recognition errors, "
+        "spelling, grammar and punctuation. Speech recognition often writes a "
+        "word that sounds like the intended word but does not fit the context, "
+        "especially technical terms, product names and names (for example "
+        "\"cloud\" for \"Claude\", \"def container\" for \"devcontainer\", "
+        "\"get hub\" for \"GitHub\"). Replace such words with the word that the "
+        "context implies. Keep the wording, the language, the meaning and the "
+        "line breaks. Do not add, remove or translate content. Output only the "
+        "corrected text.";
 
     // gpu
     bool gpu_enabled = true;

@@ -59,6 +59,7 @@ add_executable(psst
     src/editor.cpp
     src/settings.cpp
     src/tray.cpp
+    src/correct.cpp
 )
 
 target_include_directories(psst PRIVATE src)

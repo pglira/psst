@@ -59,6 +59,18 @@ enabled = true
 pause_key = "<Control>space"           # pause / resume the microphone
 type_key  = "<Control>Return"          # close and type at the previous cursor
 copy_key  = "<Control><Shift>Return"   # close and copy to the clipboard
+correct_key = "<Control>r"             # correct the selection (or all text) with an LLM
+undo_key    = "<Control>z"             # undo the last correction
+
+[correction]
+# LLM correction in the editor, with the claude CLI ("claude -p"). The CLI
+# runs without tools, MCP servers and settings files.
+# The claude CLI; a full path if it is not on the PATH of psst.
+command = "claude"
+# Model alias or name, e.g. "haiku", "sonnet", "opus". Empty = CLI default.
+model = "haiku"
+# System prompt of the correction.
+prompt = "You correct text from speech recognition. Fix recognition errors, spelling, grammar and punctuation. Speech recognition often writes a word that sounds like the intended word but does not fit the context, especially technical terms, product names and names (for example \"cloud\" for \"Claude\", \"def container\" for \"devcontainer\", \"get hub\" for \"GitHub\"). Replace such words with the word that the context implies. Keep the wording, the language, the meaning and the line breaks. Do not add, remove or translate content. Output only the corrected text."
 
 [stream]
 # Without the editor: type text while you speak; each utterance is

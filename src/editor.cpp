@@ -18,6 +18,8 @@ window.psst-editor textview, window.psst-editor textview text {
 window.psst-editor .psst-rec { color: #ff4545; font-weight: bold; }
 window.psst-editor .psst-paused { color: #ffb020; font-weight: bold; }
 window.psst-editor .psst-status { color: #8a8a99; font-weight: bold; }
+window.psst-editor .psst-note { color: #8a8a99; }
+window.psst-editor .psst-key { font-size: 8pt; opacity: 0.7; }
 )";
 
 std::string buffer_text(GtkTextBuffer* buffer, const GtkTextIter* from,
@@ -63,6 +65,8 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
     pause_key_ = parse_key(cfg.editor_pause_key);
     type_key_  = parse_key(cfg.editor_type_key);
     copy_key_  = parse_key(cfg.editor_copy_key);
+    correct_key_ = parse_key(cfg.editor_correct_key);
+    undo_key_    = parse_key(cfg.editor_undo_key);
 
     GtkCssProvider* css = gtk_css_provider_new();
     gtk_css_provider_load_from_data(css, kCss, -1, nullptr);
@@ -73,7 +77,7 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
 
     window_ = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window_), "psst");
-    gtk_window_set_default_size(GTK_WINDOW(window_), 600, 240);
+    gtk_window_set_default_size(GTK_WINDOW(window_), 720, 260);
     gtk_window_set_decorated(GTK_WINDOW(window_), FALSE);
     gtk_window_set_keep_above(GTK_WINDOW(window_), TRUE);
     gtk_window_set_skip_taskbar_hint(GTK_WINDOW(window_), TRUE);
@@ -119,6 +123,13 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
     gtk_box_pack_start(GTK_BOX(top), icon_, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(top), status_, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(top), level_, TRUE, TRUE, 0);
+    note_ = gtk_label_new(nullptr);
+    gtk_label_set_width_chars(GTK_LABEL(note_), 28);
+    gtk_label_set_max_width_chars(GTK_LABEL(note_), 28);
+    gtk_label_set_ellipsize(GTK_LABEL(note_), PANGO_ELLIPSIZE_END);
+    gtk_label_set_xalign(GTK_LABEL(note_), 1.0f);
+    gtk_style_context_add_class(gtk_widget_get_style_context(note_), "psst-note");
+    gtk_box_pack_start(GTK_BOX(top), note_, FALSE, FALSE, 0);
     GtkWidget* settings_btn = gtk_button_new_from_icon_name("preferences-system-symbolic",
                                                             GTK_ICON_SIZE_BUTTON);
     gtk_widget_set_tooltip_text(settings_btn, "Settings  (Ctrl+,)");
@@ -134,14 +145,26 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
 
     // Text field.
     GtkWidget* scroll = gtk_scrolled_window_new(nullptr, nullptr);
+    // A wrapping text view reports its current width as its minimum width.
+    // The AUTOMATIC policy keeps that minimum from reaching the window, which
+    // would otherwise grow at each relayout; the wrapped text never needs a
+    // horizontal scroll bar.
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
-                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+                                   GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
     view_ = gtk_text_view_new();
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(view_), GTK_WRAP_WORD_CHAR);
     gtk_text_view_set_left_margin(GTK_TEXT_VIEW(view_), 6);
     gtk_text_view_set_right_margin(GTK_TEXT_VIEW(view_), 6);
     gtk_text_view_set_top_margin(GTK_TEXT_VIEW(view_), 4);
     buffer_ = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view_));
+    // Start marks keep right gravity and end marks left gravity, so that text
+    // inserted at the edges of a range stays outside of it.
+    GtkTextIter origin;
+    gtk_text_buffer_get_start_iter(buffer_, &origin);
+    correct_from_ = gtk_text_buffer_create_mark(buffer_, nullptr, &origin, FALSE);
+    correct_to_   = gtk_text_buffer_create_mark(buffer_, nullptr, &origin, TRUE);
+    undo_from_    = gtk_text_buffer_create_mark(buffer_, nullptr, &origin, FALSE);
+    undo_to_      = gtk_text_buffer_create_mark(buffer_, nullptr, &origin, TRUE);
     g_signal_connect_swapped(buffer_, "changed",
                              G_CALLBACK(+[](EditorWindow* self) { self->update_context(); }),
                              this);
@@ -154,27 +177,33 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
     gtk_container_add(GTK_CONTAINER(scroll), view_);
     gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
 
-    // Buttons, labelled with their key bindings.
+    // Buttons: the action name above its key binding.
     GtkWidget* buttons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
     gtk_box_set_homogeneous(GTK_BOX(buttons), TRUE);
-    auto add_button = [&](const std::function<void()>* action) {
+    auto add_button = [&](GCallback on_click, gpointer data) {
         GtkWidget* button = gtk_button_new();
+        GtkWidget* labels = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+        GtkWidget* name = gtk_label_new(nullptr);
+        GtkWidget* key = gtk_label_new(nullptr);
+        gtk_style_context_add_class(gtk_widget_get_style_context(key), "psst-key");
+        gtk_box_pack_start(GTK_BOX(labels), name, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(labels), key, FALSE, FALSE, 0);
+        gtk_container_add(GTK_CONTAINER(button), labels);
+        g_object_set_data(G_OBJECT(button), "psst-name", name);
+        g_object_set_data(G_OBJECT(button), "psst-key", key);
         gtk_widget_set_can_focus(button, FALSE);
-        g_signal_connect(button, "clicked",
-                         G_CALLBACK(+[](GtkButton*, gpointer data) {
-                             auto* fn = static_cast<const std::function<void()>*>(data);
-                             if (*fn) (*fn)();
-                         }), const_cast<std::function<void()>*>(action));
+        g_signal_connect_swapped(button, "clicked", on_click, data);
+        gtk_box_pack_start(GTK_BOX(buttons), button, TRUE, TRUE, 0);
         return button;
     };
-    pause_btn_  = add_button(&actions_.pause);
-    type_btn_   = add_button(&actions_.type);
-    copy_btn_   = add_button(&actions_.copy);
-    cancel_btn_ = add_button(&actions_.cancel);
-    gtk_box_pack_start(GTK_BOX(buttons), pause_btn_, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(buttons), type_btn_, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(buttons), copy_btn_, TRUE, TRUE, 0);
-    gtk_box_pack_end(GTK_BOX(buttons), cancel_btn_, TRUE, TRUE, 0);
+    auto run_action = G_CALLBACK(+[](std::function<void()>* fn) { if (*fn) (*fn)(); });
+    pause_btn_   = add_button(run_action, &actions_.pause);
+    correct_btn_ = add_button(G_CALLBACK(+[](EditorWindow* self) { self->correct(); }), this);
+    undo_btn_    = add_button(G_CALLBACK(+[](EditorWindow* self) { self->undo_correction(); }),
+                              this);
+    type_btn_    = add_button(run_action, &actions_.type);
+    copy_btn_    = add_button(run_action, &actions_.copy);
+    cancel_btn_  = add_button(run_action, &actions_.cancel);
     gtk_box_pack_start(GTK_BOX(box), buttons, FALSE, FALSE, 0);
 
     gtk_widget_show_all(box);
@@ -186,6 +215,8 @@ void EditorWindow::reconfigure(const Config& cfg) {
     pause_key_ = parse_key(cfg.editor_pause_key);
     type_key_  = parse_key(cfg.editor_type_key);
     copy_key_  = parse_key(cfg.editor_copy_key);
+    correct_key_ = parse_key(cfg.editor_correct_key);
+    undo_key_    = parse_key(cfg.editor_undo_key);
     update_labels();
 }
 
@@ -198,36 +229,34 @@ unsigned long EditorWindow::xid() const {
 }
 
 void EditorWindow::update_labels() {
-    auto with_key = [](const char* name, const Key& key) {
-        std::string label = name;
-        if (key.keyval) label += "  (" + label_of(key) + ")";
-        return label;
-    };
-    gtk_button_set_label(GTK_BUTTON(type_btn_), with_key("Type", type_key_).c_str());
-    gtk_button_set_label(GTK_BUTTON(copy_btn_), with_key("Copy", copy_key_).c_str());
-    gtk_button_set_label(GTK_BUTTON(cancel_btn_),
-                         with_key("Cancel", Key{GDK_KEY_Escape, GdkModifierType(0)}).c_str());
-
-    // Size the pause button for its longer label, so that the buttons keep
-    // their width when the label changes.
-    gtk_widget_set_size_request(pause_btn_, -1, -1);
-    gtk_button_set_label(GTK_BUTTON(pause_btn_), pause_label(true).c_str());
-    gint width = 0;
-    gtk_widget_get_preferred_width(pause_btn_, nullptr, &width);
-    gtk_widget_set_size_request(pause_btn_, width, -1);
-    gtk_button_set_label(GTK_BUTTON(pause_btn_),
-                         pause_label(phase_ == Phase::Paused).c_str());
+    set_button(pause_btn_, phase_ == Phase::Paused ? "Resume" : "Pause", pause_key_);
+    set_button(correct_btn_, "Correct", correct_key_);
+    set_button(undo_btn_, "Undo", undo_key_);
+    set_button(type_btn_, "Type", type_key_);
+    set_button(copy_btn_, "Copy", copy_key_);
+    set_button(cancel_btn_, "Cancel", kEscape);
 }
 
-std::string EditorWindow::pause_label(bool paused) const {
-    std::string label = paused ? "Resume" : "Pause";
-    if (pause_key_.keyval) label += "  (" + label_of(pause_key_) + ")";
-    return label;
+void EditorWindow::set_button(GtkWidget* button, const char* name, const Key& key) {
+    auto* name_label = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(button), "psst-name"));
+    auto* key_label  = static_cast<GtkWidget*>(g_object_get_data(G_OBJECT(button), "psst-key"));
+    gtk_label_set_text(GTK_LABEL(name_label), name);
+    gtk_label_set_text(GTK_LABEL(key_label), key.keyval ? label_of(key).c_str() : "");
+}
+
+void EditorWindow::set_note(const std::string& text) {
+    gtk_label_set_text(GTK_LABEL(note_), text.c_str());
+    gtk_widget_set_tooltip_text(note_, text.empty() ? nullptr : text.c_str());
 }
 
 void EditorWindow::show() {
     if (!window_) return;
+    corrector_.cancel();
     gtk_text_buffer_set_text(buffer_, "", -1);
+    undo_available_ = false;
+    set_note("");
+    gtk_widget_set_sensitive(correct_btn_, TRUE);
+    gtk_widget_set_sensitive(undo_btn_, FALSE);
     meter_.reset();
     last_filled_ = -1;
     set_paused(false);
@@ -262,6 +291,7 @@ void EditorWindow::show() {
 
 void EditorWindow::hide() {
     if (!window_) return;
+    corrector_.cancel();
     gtk_widget_hide(window_);
     if (timer_id_) { g_source_remove(timer_id_); timer_id_ = 0; }
     std::cerr << "[editor] Hidden\n";
@@ -276,8 +306,8 @@ void EditorWindow::push_samples(const float* data, size_t count) {
 }
 
 void EditorWindow::set_paused(bool paused) {
-    gtk_button_set_label(GTK_BUTTON(pause_btn_), pause_label(paused).c_str());
     set_status(paused ? Phase::Paused : Phase::Recording);
+    set_button(pause_btn_, paused ? "Resume" : "Pause", pause_key_);
 }
 
 void EditorWindow::set_finishing() {
@@ -285,6 +315,10 @@ void EditorWindow::set_finishing() {
     gtk_widget_set_sensitive(pause_btn_, FALSE);
     gtk_widget_set_sensitive(type_btn_, FALSE);
     gtk_widget_set_sensitive(copy_btn_, FALSE);
+    gtk_widget_set_sensitive(correct_btn_, FALSE);
+    gtk_widget_set_sensitive(undo_btn_, FALSE);
+    corrector_.cancel();
+    set_note("");
     set_status(Phase::Finishing);
 }
 
@@ -391,6 +425,95 @@ void EditorWindow::update_context() {
     context_ = std::move(text);
 }
 
+std::string EditorWindow::text_between(GtkTextMark* from, GtkTextMark* to) const {
+    GtkTextIter a, b;
+    gtk_text_buffer_get_iter_at_mark(buffer_, &a, from);
+    gtk_text_buffer_get_iter_at_mark(buffer_, &b, to);
+    return buffer_text(buffer_, &a, &b);
+}
+
+std::pair<int, int> EditorWindow::replace_range(GtkTextIter* from, GtkTextIter* to,
+                                                const std::string& text) {
+    int start = gtk_text_iter_get_offset(from);
+    gtk_text_buffer_begin_user_action(buffer_);
+    gtk_text_buffer_delete(buffer_, from, to);
+    gtk_text_buffer_insert(buffer_, from, text.data(), static_cast<gint>(text.size()));
+    gtk_text_buffer_end_user_action(buffer_);
+    return {start, gtk_text_iter_get_offset(from)};
+}
+
+void EditorWindow::correct() {
+    if (corrector_.busy()) return;
+
+    GtkTextIter from, to;
+    if (!gtk_text_buffer_get_selection_bounds(buffer_, &from, &to))
+        gtk_text_buffer_get_bounds(buffer_, &from, &to);
+    std::string text = buffer_text(buffer_, &from, &to);
+    if (text.find_first_not_of(" \t\r\n") == std::string::npos) {
+        set_note("Nothing to correct.");
+        return;
+    }
+
+    gtk_text_buffer_move_mark(buffer_, correct_from_, &from);
+    gtk_text_buffer_move_mark(buffer_, correct_to_, &to);
+    correct_original_ = text;
+    gtk_widget_set_sensitive(correct_btn_, FALSE);
+    set_note("Correcting…");
+    corrector_.run(cfg_, text, [this](bool ok, const std::string& result) {
+        on_corrected(ok, result);
+    });
+}
+
+void EditorWindow::on_corrected(bool ok, const std::string& result) {
+    gtk_widget_set_sensitive(correct_btn_, phase_ != Phase::Finishing);
+    if (!ok) {
+        set_note("Correction failed: " + result);
+        return;
+    }
+    // Dictation or typing inside the range during the correction wins.
+    if (text_between(correct_from_, correct_to_) != correct_original_) {
+        set_note("Text changed during the correction; result discarded.");
+        return;
+    }
+    gchar* valid = g_utf8_make_valid(result.c_str(), -1);
+    std::string corrected = valid;
+    g_free(valid);
+    if (corrected == correct_original_) {
+        set_note("No corrections.");
+        return;
+    }
+
+    GtkTextIter from, to;
+    gtk_text_buffer_get_iter_at_mark(buffer_, &from, correct_from_);
+    gtk_text_buffer_get_iter_at_mark(buffer_, &to, correct_to_);
+    auto [start, end] = replace_range(&from, &to, corrected);
+    GtkTextIter a, b;
+    gtk_text_buffer_get_iter_at_offset(buffer_, &a, start);
+    gtk_text_buffer_get_iter_at_offset(buffer_, &b, end);
+    gtk_text_buffer_move_mark(buffer_, undo_from_, &a);
+    gtk_text_buffer_move_mark(buffer_, undo_to_, &b);
+    undo_original_ = correct_original_;
+    undo_corrected_ = corrected;
+    undo_available_ = true;
+    gtk_widget_set_sensitive(undo_btn_, phase_ != Phase::Finishing);
+    set_note("Corrected.");
+}
+
+void EditorWindow::undo_correction() {
+    if (!undo_available_) return;
+    undo_available_ = false;
+    gtk_widget_set_sensitive(undo_btn_, FALSE);
+    if (text_between(undo_from_, undo_to_) != undo_corrected_) {
+        set_note("Text changed after the correction; cannot undo.");
+        return;
+    }
+    GtkTextIter from, to;
+    gtk_text_buffer_get_iter_at_mark(buffer_, &from, undo_from_);
+    gtk_text_buffer_get_iter_at_mark(buffer_, &to, undo_to_);
+    replace_range(&from, &to, undo_original_);
+    set_note("Correction undone.");
+}
+
 gboolean EditorWindow::on_key(GtkWidget*, GdkEventKey* event, gpointer data) {
     auto* self = static_cast<EditorWindow*>(data);
     const std::function<void()>* action = nullptr;
@@ -401,6 +524,13 @@ gboolean EditorWindow::on_key(GtkWidget*, GdkEventKey* event, gpointer data) {
     else if (matches(self->pause_key_, event)) action = &self->actions_.pause;
     else if (matches(self->type_key_, event))  action = &self->actions_.type;
     else if (matches(self->copy_key_, event))  action = &self->actions_.copy;
+    else if (matches(self->correct_key_, event)) {
+        if (gtk_widget_get_sensitive(self->correct_btn_)) self->correct();
+        return TRUE;
+    } else if (matches(self->undo_key_, event) && self->undo_available_) {
+        self->undo_correction();
+        return TRUE;
+    }
     if (!action) return FALSE;  // the text field handles the key
     if (*action) (*action)();
     return TRUE;

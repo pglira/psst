@@ -79,7 +79,8 @@ void SettingsWindow::init(const std::string& config_path, Apply apply) {
                          auto* self = static_cast<SettingsWindow*>(data);
                          if (e->keyval != GDK_KEY_Escape) return FALSE;
                          for (const KeyField* f : {&self->hotkey_, &self->pause_key_,
-                                                   &self->type_key_, &self->copy_key_})
+                                                   &self->type_key_, &self->copy_key_,
+                                                   &self->correct_key_, &self->undo_key_})
                              if (f->capturing) return FALSE;
                          gtk_widget_hide(w);
                          return TRUE;
@@ -130,8 +131,27 @@ void SettingsWindow::init(const std::string& config_path, Apply apply) {
     add_row("Pause / resume", pause_key_.button = gtk_button_new());
     add_row("Type", type_key_.button = gtk_button_new());
     add_row("Copy", copy_key_.button = gtk_button_new());
-    for (KeyField* f : {&hotkey_, &pause_key_, &type_key_, &copy_key_})
+    add_row("Correct", correct_key_.button = gtk_button_new());
+    add_row("Undo correction", undo_key_.button = gtk_button_new());
+    for (KeyField* f : {&hotkey_, &pause_key_, &type_key_, &copy_key_, &correct_key_, &undo_key_})
         bind_key_field(*f);
+
+    add_section("Correction (claude CLI)");
+    correction_command_ = gtk_entry_new();
+    add_row("Command", correction_command_,
+            "The claude CLI; a full path if it is not on the PATH of psst.");
+    correction_model_ = combo_with_entry({"haiku", "sonnet", "opus"});
+    add_row("Model", correction_model_);
+    GtkWidget* prompt_view = gtk_text_view_new();
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(prompt_view), GTK_WRAP_WORD);
+    correction_prompt_ = gtk_text_view_get_buffer(GTK_TEXT_VIEW(prompt_view));
+    GtkWidget* prompt_scroll = gtk_scrolled_window_new(nullptr, nullptr);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(prompt_scroll),
+                                   GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_shadow_type(GTK_SCROLLED_WINDOW(prompt_scroll), GTK_SHADOW_IN);
+    gtk_widget_set_size_request(prompt_scroll, 320, 90);
+    gtk_container_add(GTK_CONTAINER(prompt_scroll), prompt_view);
+    add_row("Instructions", prompt_scroll, "The system prompt for the correction.");
 
     add_section("Output and audio");
     type_delay_ = spin(0, 100, 1);
@@ -223,6 +243,11 @@ void SettingsWindow::load(const Config& cfg) {
     set_key(pause_key_, cfg.editor_pause_key);
     set_key(type_key_, cfg.editor_type_key);
     set_key(copy_key_, cfg.editor_copy_key);
+    set_key(correct_key_, cfg.editor_correct_key);
+    set_key(undo_key_, cfg.editor_undo_key);
+    gtk_entry_set_text(GTK_ENTRY(correction_command_), cfg.correction_command.c_str());
+    set_combo_text(correction_model_, cfg.correction_model);
+    gtk_text_buffer_set_text(correction_prompt_, cfg.correction_prompt.c_str(), -1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(type_delay_), cfg.type_delay_ms);
     gtk_switch_set_active(GTK_SWITCH(clipboard_), cfg.copy_to_clipboard);
 
@@ -248,6 +273,17 @@ Config SettingsWindow::collect() const {
     cfg.editor_pause_key = pause_key_.value;
     cfg.editor_type_key = type_key_.value;
     cfg.editor_copy_key = copy_key_.value;
+    cfg.editor_correct_key = correct_key_.value;
+    cfg.editor_undo_key = undo_key_.value;
+    cfg.correction_command = gtk_entry_get_text(GTK_ENTRY(correction_command_));
+    if (cfg.correction_command.empty()) cfg.correction_command = "claude";
+    cfg.correction_model = combo_text(correction_model_);
+    GtkTextIter a, b;
+    gtk_text_buffer_get_bounds(correction_prompt_, &a, &b);
+    gchar* prompt = gtk_text_buffer_get_text(correction_prompt_, &a, &b, FALSE);
+    cfg.correction_prompt = prompt ? prompt : "";
+    g_free(prompt);
+    if (cfg.correction_prompt.empty()) cfg.correction_prompt = Config().correction_prompt;
     cfg.type_delay_ms = value(type_delay_);
     cfg.copy_to_clipboard = active(clipboard_);
     cfg.audio_device = combo_text(device_);

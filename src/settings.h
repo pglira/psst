@@ -59,5 +59,8 @@ private:
     GtkWidget* type_delay_ = nullptr;
     GtkWidget* clipboard_ = nullptr;
     GtkWidget* device_ = nullptr;
-    KeyField hotkey_, pause_key_, type_key_, copy_key_;
+    GtkWidget* correction_command_ = nullptr;
+    GtkWidget* correction_model_ = nullptr;
+    GtkTextBuffer* correction_prompt_ = nullptr;
+    KeyField hotkey_, pause_key_, type_key_, copy_key_, correct_key_, undo_key_;
 };

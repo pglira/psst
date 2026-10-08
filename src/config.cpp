@@ -88,6 +88,11 @@ bool save_config(const std::string& path, const Config& cfg) {
         {"editor",      "pause_key",        toml_string(cfg.editor_pause_key)},
         {"editor",      "type_key",         toml_string(cfg.editor_type_key)},
         {"editor",      "copy_key",         toml_string(cfg.editor_copy_key)},
+        {"editor",      "correct_key",      toml_string(cfg.editor_correct_key)},
+        {"editor",      "undo_key",         toml_string(cfg.editor_undo_key)},
+        {"correction",  "command",          toml_string(cfg.correction_command)},
+        {"correction",  "model",            toml_string(cfg.correction_model)},
+        {"correction",  "prompt",           toml_string(cfg.correction_prompt)},
         {"stream",      "enabled",          toml_bool(cfg.stream_enabled)},
         {"stream",      "pause_ms",         std::to_string(cfg.stream_pause_ms)},
         {"stream",      "max_utterance_ms", std::to_string(cfg.stream_max_utterance_ms)},
@@ -188,6 +193,13 @@ Config load_config(const std::string& path) {
         cfg.editor_pause_key = tbl["editor"]["pause_key"].value_or(cfg.editor_pause_key);
         cfg.editor_type_key  = tbl["editor"]["type_key"].value_or(cfg.editor_type_key);
         cfg.editor_copy_key  = tbl["editor"]["copy_key"].value_or(cfg.editor_copy_key);
+        cfg.editor_correct_key = tbl["editor"]["correct_key"].value_or(cfg.editor_correct_key);
+        cfg.editor_undo_key    = tbl["editor"]["undo_key"].value_or(cfg.editor_undo_key);
+
+        // correction
+        cfg.correction_command = tbl["correction"]["command"].value_or(cfg.correction_command);
+        cfg.correction_model   = tbl["correction"]["model"].value_or(cfg.correction_model);
+        cfg.correction_prompt  = tbl["correction"]["prompt"].value_or(cfg.correction_prompt);
 
         // gpu
         cfg.gpu_enabled = tbl["gpu"]["enabled"].value_or(cfg.gpu_enabled);

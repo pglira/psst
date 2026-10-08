@@ -12,6 +12,7 @@ the previous window, or copy it to the clipboard.
 - **GPU-accelerated** transcription via whisper.cpp (CUDA)
 - **Dictation editor** — edit the text while you dictate; pause, type, or
   copy with buttons or key bindings
+- **LLM correction** — correct the editor text with the claude CLI, with undo
 - **Live typing** — without the editor, each utterance is typed into the
   focused window when you pause
 - **Edit commands** — say "delete word" or "delete sentence" (or "Wort
@@ -127,9 +128,21 @@ can click into the text or type corrections while you dictate.
 | Key (default)       | Button | Action                                         |
 |---------------------|--------|------------------------------------------------|
 | `Ctrl+Space`        | Pause  | Pause or resume the microphone                 |
+| `Ctrl+R`            | Correct | Correct the selection (or all text) with an LLM |
+| `Ctrl+Z`            | Undo   | Undo the last correction                       |
 | `Ctrl+Enter`        | Type   | Close and type the text into the previous window |
 | `Ctrl+Shift+Enter`  | Copy   | Close and copy the text to the clipboard       |
 | `Esc`               | Cancel | Close and discard the text                     |
+
+Correct sends the selected text, or all text without a selection, to the
+[claude CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude -p`,
+model `haiku` by default). It fixes recognition errors, spelling, grammar,
+and punctuation, replaces words that sound alike but do not fit the context
+(e.g. "cloud" → "Claude", "def container" → "devcontainer"), and keeps the
+wording and the language. Dictation continues
+during the correction; if the text in the range changes meanwhile, psst
+discards the result. Set the command, model, and instructions in
+`[correction]` or in the settings window.
 
 The hotkey (`Super+V`) does the same as Type. Change the key bindings in
 `[editor]`. On Wayland, psst cannot give the focus back to the previous
