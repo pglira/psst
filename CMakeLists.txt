@@ -51,11 +51,10 @@ add_executable(psst
     src/config.cpp
     src/audio.cpp
     src/hotkey.cpp
-    src/overlay.cpp
+    src/meter.cpp
     src/transcribe.cpp
     src/inject.cpp
     src/punctuate.cpp
-    src/stream.cpp
     src/editor.cpp
     src/settings.cpp
     src/tray.cpp

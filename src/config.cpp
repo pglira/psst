@@ -84,8 +84,7 @@ bool save_config(const std::string& path, const Config& cfg) {
         {"whisper",     "translate",        toml_bool(cfg.translate)},
         {"whisper",     "initial_prompt",   toml_string(cfg.initial_prompt)},
         {"punctuation", "enabled",          toml_bool(cfg.punctuation_enabled)},
-        {"editor",      "enabled",          toml_bool(cfg.editor_enabled)},
-        {"editor",      "pause_key",        toml_string(cfg.editor_pause_key)},
+        {"editor",      "talk_key",         toml_string(cfg.editor_talk_key)},
         {"editor",      "type_key",         toml_string(cfg.editor_type_key)},
         {"editor",      "copy_key",         toml_string(cfg.editor_copy_key)},
         {"editor",      "correct_key",      toml_string(cfg.editor_correct_key)},
@@ -93,12 +92,8 @@ bool save_config(const std::string& path, const Config& cfg) {
         {"correction",  "command",          toml_string(cfg.correction_command)},
         {"correction",  "model",            toml_string(cfg.correction_model)},
         {"correction",  "prompt",           toml_string(cfg.correction_prompt)},
-        {"stream",      "enabled",          toml_bool(cfg.stream_enabled)},
-        {"stream",      "pause_ms",         std::to_string(cfg.stream_pause_ms)},
-        {"stream",      "max_utterance_ms", std::to_string(cfg.stream_max_utterance_ms)},
         {"gpu",         "enabled",          toml_bool(cfg.gpu_enabled)},
         {"hotkey",      "bind",             toml_string(cfg.hotkey_bind)},
-        {"output",      "copy_to_clipboard", toml_bool(cfg.copy_to_clipboard)},
         {"inject",      "type_delay_ms",    std::to_string(cfg.type_delay_ms)},
         {"audio",       "device",           toml_string(cfg.audio_device)},
     };
@@ -183,14 +178,8 @@ Config load_config(const std::string& path) {
             }
         }
 
-        // stream
-        cfg.stream_enabled          = tbl["stream"]["enabled"].value_or(cfg.stream_enabled);
-        cfg.stream_pause_ms         = tbl["stream"]["pause_ms"].value_or(cfg.stream_pause_ms);
-        cfg.stream_max_utterance_ms = tbl["stream"]["max_utterance_ms"].value_or(cfg.stream_max_utterance_ms);
-
         // editor
-        cfg.editor_enabled   = tbl["editor"]["enabled"].value_or(cfg.editor_enabled);
-        cfg.editor_pause_key = tbl["editor"]["pause_key"].value_or(cfg.editor_pause_key);
+        cfg.editor_talk_key  = tbl["editor"]["talk_key"].value_or(cfg.editor_talk_key);
         cfg.editor_type_key  = tbl["editor"]["type_key"].value_or(cfg.editor_type_key);
         cfg.editor_copy_key  = tbl["editor"]["copy_key"].value_or(cfg.editor_copy_key);
         cfg.editor_correct_key = tbl["editor"]["correct_key"].value_or(cfg.editor_correct_key);
@@ -207,9 +196,6 @@ Config load_config(const std::string& path) {
 
         // hotkey
         cfg.hotkey_bind = tbl["hotkey"]["bind"].value_or(cfg.hotkey_bind);
-
-        // output
-        cfg.copy_to_clipboard = tbl["output"]["copy_to_clipboard"].value_or(cfg.copy_to_clipboard);
 
         // inject
         cfg.type_delay_ms = tbl["inject"]["type_delay_ms"].value_or(cfg.type_delay_ms);

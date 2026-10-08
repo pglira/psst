@@ -16,14 +16,8 @@ struct Config {
     bool punctuation_enabled = true;
     std::map<std::string, std::string> punctuation_words;  // phrase → text
 
-    // stream (type text while speaking)
-    bool stream_enabled          = true;
-    int  stream_pause_ms         = 600;    // silence that ends an utterance
-    int  stream_max_utterance_ms = 20000;  // longer utterances are split
-
     // editor (dictation window with an editable text field)
-    bool        editor_enabled   = true;
-    std::string editor_pause_key = "<Control>space";
+    std::string editor_talk_key  = "<Control>space";  // hold to dictate
     std::string editor_type_key  = "<Control>Return";
     std::string editor_copy_key  = "<Control><Shift>Return";
     std::string editor_correct_key = "<Control>r";
@@ -49,9 +43,6 @@ struct Config {
 
     // hotkey
     std::string hotkey_bind = "super+v";
-
-    // output
-    bool copy_to_clipboard = false;
 
     // inject
     int type_delay_ms = 12;

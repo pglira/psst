@@ -78,7 +78,7 @@ void SettingsWindow::init(const std::string& config_path, Apply apply) {
                      G_CALLBACK(+[](GtkWidget* w, GdkEventKey* e, gpointer data) -> gboolean {
                          auto* self = static_cast<SettingsWindow*>(data);
                          if (e->keyval != GDK_KEY_Escape) return FALSE;
-                         for (const KeyField* f : {&self->hotkey_, &self->pause_key_,
+                         for (const KeyField* f : {&self->hotkey_, &self->talk_key_,
                                                    &self->type_key_, &self->copy_key_,
                                                    &self->correct_key_, &self->undo_key_})
                              if (f->capturing) return FALSE;
@@ -109,31 +109,20 @@ void SettingsWindow::init(const std::string& config_path, Apply apply) {
     add_row("Use GPU", gpu_);
 
     add_section("Dictation");
-    editor_ = toggle();
-    add_row("Dictation editor", editor_,
-            "Off: the hotkey types the dictated text directly at the cursor.");
-    stream_ = toggle();
-    add_row("Live typing without editor", stream_,
-            "Without the editor: type each utterance when you pause. "
-            "Off: type all text when the recording stops.");
     commands_ = toggle();
     add_row("Spoken commands", commands_,
             "Punctuation (\"comma\", \"new line\") and edits (\"delete word\").");
-    pause_ms_ = spin(200, 3000, 50);
-    add_row("Pause that ends an utterance (ms)", pause_ms_);
-    max_utterance_ = spin(5, 30, 1);
-    add_row("Longest utterance (s)", max_utterance_);
 
     add_section("Keys");
     hotkey_.hotkey = true;
     add_row("Hotkey (global)", hotkey_.button = gtk_button_new(),
             "Click, then press the new key combination. Escape keeps the old one.");
-    add_row("Pause / resume", pause_key_.button = gtk_button_new());
+    add_row("Talk (hold)", talk_key_.button = gtk_button_new());
     add_row("Type", type_key_.button = gtk_button_new());
     add_row("Copy", copy_key_.button = gtk_button_new());
     add_row("Correct", correct_key_.button = gtk_button_new());
     add_row("Undo correction", undo_key_.button = gtk_button_new());
-    for (KeyField* f : {&hotkey_, &pause_key_, &type_key_, &copy_key_, &correct_key_, &undo_key_})
+    for (KeyField* f : {&hotkey_, &talk_key_, &type_key_, &copy_key_, &correct_key_, &undo_key_})
         bind_key_field(*f);
 
     add_section("Correction (claude CLI)");
@@ -156,8 +145,6 @@ void SettingsWindow::init(const std::string& config_path, Apply apply) {
     add_section("Output and audio");
     type_delay_ = spin(0, 100, 1);
     add_row("Delay between typed keys (ms)", type_delay_);
-    clipboard_ = toggle();
-    add_row("Also copy typed text to clipboard", clipboard_);
     device_ = gtk_combo_box_text_new_with_entry();
     gtk_entry_set_placeholder_text(GTK_ENTRY(gtk_bin_get_child(GTK_BIN(device_))),
                                    "default microphone");
@@ -233,14 +220,9 @@ void SettingsWindow::load(const Config& cfg) {
     gtk_entry_set_text(GTK_ENTRY(prompt_), cfg.initial_prompt.c_str());
     gtk_switch_set_active(GTK_SWITCH(translate_), cfg.translate);
     gtk_switch_set_active(GTK_SWITCH(gpu_), cfg.gpu_enabled);
-    gtk_switch_set_active(GTK_SWITCH(editor_), cfg.editor_enabled);
-    gtk_switch_set_active(GTK_SWITCH(stream_), cfg.stream_enabled);
     gtk_switch_set_active(GTK_SWITCH(commands_), cfg.punctuation_enabled);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(pause_ms_), cfg.stream_pause_ms);
-    gtk_spin_button_set_value(GTK_SPIN_BUTTON(max_utterance_),
-                              cfg.stream_max_utterance_ms / 1000.0);
     set_key(hotkey_, cfg.hotkey_bind);
-    set_key(pause_key_, cfg.editor_pause_key);
+    set_key(talk_key_, cfg.editor_talk_key);
     set_key(type_key_, cfg.editor_type_key);
     set_key(copy_key_, cfg.editor_copy_key);
     set_key(correct_key_, cfg.editor_correct_key);
@@ -249,7 +231,6 @@ void SettingsWindow::load(const Config& cfg) {
     set_combo_text(correction_model_, cfg.correction_model);
     gtk_text_buffer_set_text(correction_prompt_, cfg.correction_prompt.c_str(), -1);
     gtk_spin_button_set_value(GTK_SPIN_BUTTON(type_delay_), cfg.type_delay_ms);
-    gtk_switch_set_active(GTK_SWITCH(clipboard_), cfg.copy_to_clipboard);
 
     gtk_combo_box_text_remove_all(GTK_COMBO_BOX_TEXT(device_));
     for (const auto& source : audio_sources())
@@ -264,13 +245,9 @@ Config SettingsWindow::collect() const {
     cfg.initial_prompt = gtk_entry_get_text(GTK_ENTRY(prompt_));
     cfg.translate = active(translate_);
     cfg.gpu_enabled = active(gpu_);
-    cfg.editor_enabled = active(editor_);
-    cfg.stream_enabled = active(stream_);
     cfg.punctuation_enabled = active(commands_);
-    cfg.stream_pause_ms = value(pause_ms_);
-    cfg.stream_max_utterance_ms = value(max_utterance_) * 1000;
     cfg.hotkey_bind = hotkey_.value;
-    cfg.editor_pause_key = pause_key_.value;
+    cfg.editor_talk_key = talk_key_.value;
     cfg.editor_type_key = type_key_.value;
     cfg.editor_copy_key = copy_key_.value;
     cfg.editor_correct_key = correct_key_.value;
@@ -285,7 +262,6 @@ Config SettingsWindow::collect() const {
     g_free(prompt);
     if (cfg.correction_prompt.empty()) cfg.correction_prompt = Config().correction_prompt;
     cfg.type_delay_ms = value(type_delay_);
-    cfg.copy_to_clipboard = active(clipboard_);
     cfg.audio_device = combo_text(device_);
     if (cfg.model_size.empty()) cfg.model_size = base_.model_size;
     if (cfg.language.empty()) cfg.language = "auto";

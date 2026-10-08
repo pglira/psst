@@ -257,9 +257,3 @@ std::string append_transcript(const std::string& buffer,
     return tidy_spaces(out);
 }
 
-std::string apply_punctuation(const std::string& text,
-                              const std::map<std::string, std::string>& overrides) {
-    std::string out = append_transcript({}, text, overrides, true);
-    auto start = out.find_first_not_of('\n');
-    return start == std::string::npos ? std::string() : out.substr(start);
-}

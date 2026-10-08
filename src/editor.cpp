@@ -16,7 +16,7 @@ window.psst-editor { background-color: #1f1f26; border: 3px solid #0072a3; }
 window.psst-editor textview, window.psst-editor textview text {
     background-color: #2a2a33; color: #e8e8ee; font-size: 13pt; }
 window.psst-editor .psst-rec { color: #ff4545; font-weight: bold; }
-window.psst-editor .psst-paused { color: #ffb020; font-weight: bold; }
+window.psst-editor .psst-ready { color: #8a8a99; font-weight: bold; }
 window.psst-editor .psst-status { color: #8a8a99; font-weight: bold; }
 window.psst-editor .psst-note { color: #8a8a99; }
 window.psst-editor .psst-key { font-size: 8pt; opacity: 0.7; }
@@ -62,7 +62,7 @@ std::string EditorWindow::label_of(const Key& key) {
 void EditorWindow::init(const Config& cfg, Actions actions) {
     cfg_ = cfg;
     actions_ = std::move(actions);
-    pause_key_ = parse_key(cfg.editor_pause_key);
+    talk_key_  = parse_key(cfg.editor_talk_key);
     type_key_  = parse_key(cfg.editor_type_key);
     copy_key_  = parse_key(cfg.editor_copy_key);
     correct_key_ = parse_key(cfg.editor_correct_key);
@@ -91,6 +91,15 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
                          return TRUE;
                      }), this);
     g_signal_connect(window_, "key-press-event", G_CALLBACK(on_key), this);
+    g_signal_connect(window_, "key-release-event", G_CALLBACK(on_key_release), this);
+    // A release while another window has the focus does not reach the editor.
+    g_signal_connect(window_, "focus-out-event",
+                     G_CALLBACK(+[](GtkWidget*, GdkEvent*, gpointer data) -> gboolean {
+                         auto* self = static_cast<EditorWindow*>(data);
+                         if (self->phase_ == Phase::Talking && self->actions_.talk_stop)
+                             self->actions_.talk_stop();
+                         return FALSE;
+                     }), this);
 
     GtkWidget* box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_container_set_border_width(GTK_CONTAINER(box), 10);
@@ -197,7 +206,20 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
         return button;
     };
     auto run_action = G_CALLBACK(+[](std::function<void()>* fn) { if (*fn) (*fn)(); });
-    pause_btn_   = add_button(run_action, &actions_.pause);
+    // The talk button records while it is held down.
+    talk_btn_    = add_button(G_CALLBACK(+[](gpointer) {}), nullptr);
+    g_signal_connect(talk_btn_, "button-press-event",
+                     G_CALLBACK(+[](GtkWidget*, GdkEventButton* e, gpointer data) -> gboolean {
+                         auto* self = static_cast<EditorWindow*>(data);
+                         if (e->button == 1 && self->actions_.talk_start) self->actions_.talk_start();
+                         return FALSE;
+                     }), this);
+    g_signal_connect(talk_btn_, "button-release-event",
+                     G_CALLBACK(+[](GtkWidget*, GdkEventButton* e, gpointer data) -> gboolean {
+                         auto* self = static_cast<EditorWindow*>(data);
+                         if (e->button == 1 && self->actions_.talk_stop) self->actions_.talk_stop();
+                         return FALSE;
+                     }), this);
     correct_btn_ = add_button(G_CALLBACK(+[](EditorWindow* self) { self->correct(); }), this);
     undo_btn_    = add_button(G_CALLBACK(+[](EditorWindow* self) { self->undo_correction(); }),
                               this);
@@ -212,7 +234,7 @@ void EditorWindow::init(const Config& cfg, Actions actions) {
 
 void EditorWindow::reconfigure(const Config& cfg) {
     cfg_ = cfg;
-    pause_key_ = parse_key(cfg.editor_pause_key);
+    talk_key_  = parse_key(cfg.editor_talk_key);
     type_key_  = parse_key(cfg.editor_type_key);
     copy_key_  = parse_key(cfg.editor_copy_key);
     correct_key_ = parse_key(cfg.editor_correct_key);
@@ -220,16 +242,8 @@ void EditorWindow::reconfigure(const Config& cfg) {
     update_labels();
 }
 
-unsigned long EditorWindow::xid() const {
-#ifdef HAS_X11
-    GdkWindow* gdk_win = window_ ? gtk_widget_get_window(window_) : nullptr;
-    if (gdk_win && GDK_IS_X11_WINDOW(gdk_win)) return gdk_x11_window_get_xid(gdk_win);
-#endif
-    return 0;
-}
-
 void EditorWindow::update_labels() {
-    set_button(pause_btn_, phase_ == Phase::Paused ? "Resume" : "Pause", pause_key_);
+    set_button(talk_btn_, "Talk (hold)", talk_key_);
     set_button(correct_btn_, "Correct", correct_key_);
     set_button(undo_btn_, "Undo", undo_key_);
     set_button(type_btn_, "Type", type_key_);
@@ -259,9 +273,9 @@ void EditorWindow::show() {
     gtk_widget_set_sensitive(undo_btn_, FALSE);
     meter_.reset();
     last_filled_ = -1;
-    set_paused(false);
+    set_status(Phase::Ready);
     gtk_widget_set_sensitive(view_, TRUE);
-    gtk_widget_set_sensitive(pause_btn_, TRUE);
+    gtk_widget_set_sensitive(talk_btn_, TRUE);
     gtk_widget_set_sensitive(type_btn_, TRUE);
     gtk_widget_set_sensitive(copy_btn_, TRUE);
 
@@ -297,22 +311,24 @@ void EditorWindow::hide() {
     std::cerr << "[editor] Hidden\n";
 }
 
-bool EditorWindow::is_visible() const {
-    return window_ && gtk_widget_get_visible(window_);
-}
-
 void EditorWindow::push_samples(const float* data, size_t count) {
     meter_.push(data, count);
 }
 
-void EditorWindow::set_paused(bool paused) {
-    set_status(paused ? Phase::Paused : Phase::Recording);
-    set_button(pause_btn_, paused ? "Resume" : "Pause", pause_key_);
+void EditorWindow::set_talking(bool talking) {
+    if (phase_ != Phase::Finishing) set_status(talking ? Phase::Talking : Phase::Ready);
+}
+
+void EditorWindow::set_pending(int pending) {
+    static const std::string kTranscribing = "Transcribing…";
+    const char* current = gtk_label_get_text(GTK_LABEL(note_));
+    if (pending > 0) set_note(kTranscribing);
+    else if (current == kTranscribing) set_note("");
 }
 
 void EditorWindow::set_finishing() {
     gtk_widget_set_sensitive(view_, FALSE);
-    gtk_widget_set_sensitive(pause_btn_, FALSE);
+    gtk_widget_set_sensitive(talk_btn_, FALSE);
     gtk_widget_set_sensitive(type_btn_, FALSE);
     gtk_widget_set_sensitive(copy_btn_, FALSE);
     gtk_widget_set_sensitive(correct_btn_, FALSE);
@@ -324,12 +340,12 @@ void EditorWindow::set_finishing() {
 
 void EditorWindow::set_status(Phase phase) {
     phase_ = phase;
-    const char* text = phase == Phase::Recording ? "REC"
-                     : phase == Phase::Paused    ? "PAUSED" : "finishing…";
-    const char* css  = phase == Phase::Recording ? "psst-rec"
-                     : phase == Phase::Paused    ? "psst-paused" : "psst-status";
+    const char* text = phase == Phase::Talking ? "REC"
+                     : phase == Phase::Ready   ? "READY" : "finishing…";
+    const char* css  = phase == Phase::Talking ? "psst-rec"
+                     : phase == Phase::Ready   ? "psst-ready" : "psst-status";
     GtkStyleContext* ctx = gtk_widget_get_style_context(status_);
-    for (const char* c : {"psst-rec", "psst-paused", "psst-status"})
+    for (const char* c : {"psst-rec", "psst-ready", "psst-status"})
         gtk_style_context_remove_class(ctx, c);
     gtk_style_context_add_class(ctx, css);
     gtk_label_set_text(GTK_LABEL(status_), text);
@@ -343,15 +359,14 @@ gboolean EditorWindow::on_draw_icon(GtkWidget* widget, cairo_t* cr, gpointer dat
     double size = std::min(w, h);
     double x = (w - size) / 2.0, y = (h - size) / 2.0;
     switch (self->phase_) {
-    case Phase::Recording:  // red dot
+    case Phase::Talking:    // red dot
         cairo_set_source_rgb(cr, 1.0, 0.27, 0.27);
         cairo_arc(cr, w / 2.0, h / 2.0, size * 0.4, 0, 2 * G_PI);
         cairo_fill(cr);
         break;
-    case Phase::Paused:     // two orange bars
-        cairo_set_source_rgb(cr, 1.0, 0.69, 0.13);
-        cairo_rectangle(cr, x + size * 0.15, y + size * 0.1, size * 0.25, size * 0.8);
-        cairo_rectangle(cr, x + size * 0.6, y + size * 0.1, size * 0.25, size * 0.8);
+    case Phase::Ready:      // gray dot
+        cairo_set_source_rgb(cr, 0.54, 0.54, 0.6);
+        cairo_arc(cr, w / 2.0, h / 2.0, size * 0.4, 0, 2 * G_PI);
         cairo_fill(cr);
         break;
     case Phase::Finishing:  // gray ring
@@ -521,18 +536,48 @@ gboolean EditorWindow::on_key(GtkWidget*, GdkEventKey* event, gpointer data) {
     if (event->keyval == GDK_KEY_Escape)       action = &self->actions_.cancel;
     else if (event->keyval == GDK_KEY_comma && mods == GDK_CONTROL_MASK)
         action = &self->actions_.settings;
-    else if (matches(self->pause_key_, event)) action = &self->actions_.pause;
+    else if (matches(self->talk_key_, event)) {
+        // Key repeat sends more presses while the key is held.
+        if (self->phase_ == Phase::Ready && self->actions_.talk_start)
+            self->actions_.talk_start();
+        return TRUE;
+    }
     else if (matches(self->type_key_, event))  action = &self->actions_.type;
     else if (matches(self->copy_key_, event))  action = &self->actions_.copy;
     else if (matches(self->correct_key_, event)) {
         if (gtk_widget_get_sensitive(self->correct_btn_)) self->correct();
         return TRUE;
-    } else if (matches(self->undo_key_, event) && self->undo_available_) {
+    } else if (matches(self->undo_key_, event) && gtk_widget_get_sensitive(self->undo_btn_)) {
         self->undo_correction();
         return TRUE;
     }
     if (!action) return FALSE;  // the text field handles the key
     if (*action) (*action)();
+    return TRUE;
+}
+
+bool EditorWindow::releases_talk_key(const GdkEventKey* event) const {
+    guint keyval = gdk_keyval_to_lower(event->keyval);
+    if (keyval == talk_key_.keyval) return true;
+    // Releasing a modifier of the talk key also ends talking.
+    switch (keyval) {
+    case GDK_KEY_Control_L: case GDK_KEY_Control_R:
+        return talk_key_.mods & GDK_CONTROL_MASK;
+    case GDK_KEY_Shift_L: case GDK_KEY_Shift_R:
+        return talk_key_.mods & GDK_SHIFT_MASK;
+    case GDK_KEY_Alt_L: case GDK_KEY_Alt_R: case GDK_KEY_Meta_L: case GDK_KEY_Meta_R:
+        return talk_key_.mods & GDK_MOD1_MASK;
+    case GDK_KEY_Super_L: case GDK_KEY_Super_R:
+        return talk_key_.mods & GDK_SUPER_MASK;
+    default:
+        return false;
+    }
+}
+
+gboolean EditorWindow::on_key_release(GtkWidget*, GdkEventKey* event, gpointer data) {
+    auto* self = static_cast<EditorWindow*>(data);
+    if (self->phase_ != Phase::Talking || !self->releases_talk_key(event)) return FALSE;
+    if (self->actions_.talk_stop) self->actions_.talk_stop();
     return TRUE;
 }
 

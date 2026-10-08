@@ -10,7 +10,9 @@ inline constexpr const char* kDeleteSentence = "<delete-sentence>";
 // Keys are lowercase phrases, values are the inserted text including spacing.
 const std::map<std::string, std::string>& default_punctuation_words();
 
-// Replace spoken punctuation commands in a transcript with their symbols.
+// Append transcript `text` to `buffer`, the text already dictated, and return
+// the combined text. Spoken commands in `text` become symbols and can edit
+// `buffer`, e.g. remove its last word.
 //
 // Matching ignores ASCII case and requires word boundaries. Pause marks that
 // Whisper places around a command (e.g. "Hello, colon, world") are dropped.
@@ -19,13 +21,7 @@ const std::map<std::string, std::string>& default_punctuation_words();
 // `overrides` adds to or replaces the built-in commands; an empty value
 // disables the command with that phrase. The values kDeleteWord and
 // kDeleteSentence remove the last word or sentence of the text so far.
-std::string apply_punctuation(const std::string& text,
-                              const std::map<std::string, std::string>& overrides);
-
-// Append transcript `text` to `buffer`, the text already dictated, and return
-// the combined text. Commands in `text` apply as in apply_punctuation and can
-// edit `buffer`, e.g. remove its last word. With `commands` false, `text` is
-// only appended with a separating space.
+// With `commands` false, `text` is only appended with a separating space.
 std::string append_transcript(const std::string& buffer,
                               const std::string& text,
                               const std::map<std::string, std::string>& overrides,

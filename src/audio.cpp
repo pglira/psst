@@ -21,42 +21,37 @@ bool AudioRecorder::init(const Config& cfg) {
 }
 
 void AudioRecorder::start() {
-    if (recording_.load()) return;
-
+    if (running_.load()) return;
     {
         std::lock_guard<std::mutex> lk(samples_mtx_);
         samples_.clear();
+        capturing_ = false;
     }
-    cancel_.store(false);
-    paused_.store(false);
-    recording_.store(true);
-
+    open_failed_.store(false);
+    running_.store(true);
     pa_->thread = std::thread(&AudioRecorder::record_loop, this);
 }
 
-std::vector<float> AudioRecorder::stop() {
-    recording_.store(false);
-    if (pa_->thread.joinable())
+void AudioRecorder::stop() {
+    running_.store(false);
+    if (pa_ && pa_->thread.joinable())
         pa_->thread.join();
-
-    std::lock_guard<std::mutex> lk(samples_mtx_);
-    return std::move(samples_);
-}
-
-std::vector<float> AudioRecorder::copy_from(size_t from) {
-    std::lock_guard<std::mutex> lk(samples_mtx_);
-    if (from >= samples_.size()) return {};
-    return std::vector<float>(samples_.begin() + from, samples_.end());
-}
-
-void AudioRecorder::cancel() {
-    cancel_.store(true);
-    recording_.store(false);
-    if (pa_->thread.joinable())
-        pa_->thread.join();
-
     std::lock_guard<std::mutex> lk(samples_mtx_);
     samples_.clear();
+    capturing_ = false;
+}
+
+void AudioRecorder::begin_capture() {
+    std::lock_guard<std::mutex> lk(samples_mtx_);
+    capturing_ = true;
+}
+
+std::vector<float> AudioRecorder::end_capture() {
+    std::lock_guard<std::mutex> lk(samples_mtx_);
+    capturing_ = false;
+    std::vector<float> out = std::move(samples_);
+    samples_.clear();
+    return out;
 }
 
 void AudioRecorder::record_loop() {
@@ -89,71 +84,43 @@ void AudioRecorder::record_loop() {
     if (!pa_->stream) {
         std::cerr << "[audio] Failed to open PulseAudio stream: "
                   << pa_strerror(err) << "\n";
-        recording_.store(false);
+        open_failed_.store(true);
+        running_.store(false);
         return;
     }
 
-    std::cerr << "[audio] Recording started (fragsize=" << ba.fragsize << " bytes)\n";
+    std::cerr << "[audio] Microphone open (fragsize=" << ba.fragsize << " bytes)\n";
 
     // Read in chunks of ~50ms
     std::vector<float> chunk(chunk_frames);
 
-    while (recording_.load() && !cancel_.load()) {
+    const size_t preroll = (size_t)cfg_.sample_rate * kPrerollMs / 1000;
+    while (running_.load()) {
         if (pa_simple_read(pa_->stream, chunk.data(),
                            chunk.size() * sizeof(float), &err) < 0) {
             std::cerr << "[audio] Read error: " << pa_strerror(err) << "\n";
             break;
         }
 
-        if (paused_.load()) {
-            std::fill(chunk.begin(), chunk.end(), 0.0f);
-            if (chunk_cb_)
-                chunk_cb_(chunk.data(), chunk.size());
-            continue;
-        }
-
         {
             std::lock_guard<std::mutex> lk(samples_mtx_);
             samples_.insert(samples_.end(), chunk.begin(), chunk.end());
+            if (!capturing_ && samples_.size() > preroll)
+                samples_.erase(samples_.begin(), samples_.end() - (long)preroll);
         }
 
         if (chunk_cb_)
             chunk_cb_(chunk.data(), chunk.size());
     }
 
-    // Drain remaining audio from PulseAudio's internal buffer
-    if (!cancel_.load()) {
-        pa_usec_t latency = pa_simple_get_latency(pa_->stream, &err);
-        if (latency > 0) {
-            size_t remaining_frames = (size_t)((latency * cfg_.sample_rate) / 1000000);
-            std::cerr << "[audio] Draining " << remaining_frames << " buffered frames ("
-                      << latency / 1000 << "ms)\n";
-            while (remaining_frames > 0) {
-                size_t to_read = std::min(chunk.size(), remaining_frames);
-                if (pa_simple_read(pa_->stream, chunk.data(),
-                                   to_read * sizeof(float), &err) < 0) {
-                    break;
-                }
-                {
-                    std::lock_guard<std::mutex> lk(samples_mtx_);
-                    samples_.insert(samples_.end(), chunk.begin(), chunk.begin() + to_read);
-                }
-                if (chunk_cb_)
-                    chunk_cb_(chunk.data(), to_read);
-                remaining_frames -= to_read;
-            }
-        }
-    }
-
     pa_simple_free(pa_->stream);
     pa_->stream = nullptr;
 
-    std::cerr << "[audio] Recording stopped ("
-              << samples_.size() / (float)cfg_.sample_rate << "s)\n";
+    std::cerr << "[audio] Microphone closed\n";
 }
 
 void AudioRecorder::shutdown() {
-    if (recording_.load()) cancel();
+    stop();
     delete pa_;
     pa_ = nullptr;
 }

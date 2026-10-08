@@ -1,36 +1,29 @@
 #include "config.h"
 #include "audio.h"
 #include "hotkey.h"
-#include "overlay.h"
 #include "transcribe.h"
 #include "inject.h"
-#include "punctuate.h"
-#include "stream.h"
 #include "editor.h"
 #include "settings.h"
 #include "tray.h"
 
 #include <gtk/gtk.h>
 #include <glib-unix.h>
+#include <atomic>
+#include <condition_variable>
+#include <deque>
 #include <iostream>
 #include <csignal>
-#include <filesystem>
 #include <thread>
-#include <atomic>
 #include <functional>
-#include <memory>
+#include <mutex>
 #include <unistd.h>
-
-namespace fs = std::filesystem;
 
 // ── Global state ────────────────────────────────────────────────────
 static Config       g_cfg;
 static AudioRecorder g_audio;
 static HotkeyListener g_hotkey;
-static OverlayWindow g_overlay;
 static Transcriber  g_whisper;
-static std::atomic<bool> g_recording{false};
-static LiveDictation g_live;
 static EditorWindow g_editor;
 static SettingsWindow g_settings;
 static TrayIcon g_tray;
@@ -46,7 +39,6 @@ static void run_on_main(std::function<void()> fn) {
     }, new std::function<void()>(std::move(fn)));
 }
 
-// ── Live dictation ──────────────────────────────────────────────────
 // Whisper writes non-speech sounds in brackets, e.g. "[BLANK_AUDIO]".
 static bool is_non_speech(const std::string& text) {
     return text.size() >= 2 &&
@@ -55,152 +47,210 @@ static bool is_non_speech(const std::string& text) {
             (text.front() == '*' && text.back() == '*'));
 }
 
-// Start a live session: each utterance is transcribed and typed while the
-// recording continues. `typed` holds the text typed in this session.
-static void start_live_session() {
-    auto typed = std::make_shared<std::string>();
-    Config cfg = g_cfg;
+// ── Transcription queue ─────────────────────────────────────────────
+// One worker thread transcribes the recordings in the order of push().
+namespace queue {
 
-    auto fetch = [](size_t from) { return g_audio.copy_from(from); };
+struct Job {
+    unsigned session;                           // skipped if no longer current
+    std::vector<float> pcm;
+    std::string context;                        // text before the cursor
+    std::function<void(std::string)> done;      // called on the worker thread
+};
 
-    auto handle = [typed, cfg](const std::vector<float>& pcm,
-                               const std::atomic<bool>& cancelled) {
-        std::string text = g_whisper.transcribe(pcm, *typed);
-        if (text.empty() || is_non_speech(text) || cancelled.load()) return;
+static std::mutex mtx;
+static std::condition_variable cv;
+static std::deque<Job> jobs;
+static bool stopping = false;
+static std::thread worker;
+static std::atomic<unsigned> current_session{0};
 
-        std::string next = append_transcript(*typed, text, cfg.punctuation_words,
-                                             cfg.punctuation_enabled);
-        std::cerr << "[punctuate] Result: \"" << next << "\"\n";
-        inject_replace(*typed, next, cfg.type_delay_ms);
-        *typed = std::move(next);
-    };
-
-    auto done = [typed, cfg](bool cancelled) {
-        std::cerr << "[app] Live session " << (cancelled ? "cancelled" : "done")
-                  << " (" << typed->size() << " chars)\n";
-        if (cfg.copy_to_clipboard && !cancelled && !typed->empty())
-            inject_clipboard(*typed);
-    };
-
-    g_live.start(g_cfg, fetch, handle, done);
+static void start() {
+    worker = std::thread([] {
+        for (;;) {
+            Job job;
+            {
+                std::unique_lock<std::mutex> lk(mtx);
+                cv.wait(lk, [] { return stopping || !jobs.empty(); });
+                if (stopping) return;
+                job = std::move(jobs.front());
+                jobs.pop_front();
+            }
+            if (job.session != current_session.load()) continue;
+            std::string text = g_whisper.transcribe(job.pcm, job.context);
+            if (is_non_speech(text)) text.clear();
+            job.done(std::move(text));
+        }
+    });
 }
 
-// ── Editor session ──────────────────────────────────────────────────
-// The editor state is used on the GTK main loop only.
-// Delivering: the editor is closed and its text is still typed.
-enum class EditorState { Idle, Recording, Paused, Finishing, Delivering };
-enum class EditorOutput { Type, Copy };
+static void push(Job job) {
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        jobs.push_back(std::move(job));
+    }
+    cv.notify_one();
+}
 
-static EditorState   g_editor_state = EditorState::Idle;
-static EditorOutput  g_editor_output = EditorOutput::Type;
-static unsigned      g_editor_session = 0;  // increments for each new or cancelled session
+static void stop() {
+    {
+        std::lock_guard<std::mutex> lk(mtx);
+        stopping = true;
+    }
+    cv.notify_one();
+    if (worker.joinable()) worker.join();
+}
+
+} // namespace queue
+
+// ── Editor session ──────────────────────────────────────────────────
+// The session state is used on the GTK main loop only.
+//   Open:       the editor is shown; the user dictates and edits.
+//   Finishing:  Type or Copy waits for the last transcripts.
+//   Delivering: the editor is closed and its text is still typed.
+enum class State { Idle, Open, Finishing, Delivering };
+enum class Output { Type, Copy };
+
+constexpr guint kTailMs = 250;     // recording after the talk key is released
+constexpr gint64 kMinHoldUs = 200'000;  // shorter presses of the talk key are dropped
+
+static State         g_state = State::Idle;
+static Output        g_output = Output::Type;
+static unsigned      g_session = 0;         // increments for each new or cancelled session
 static unsigned long g_target_window = 0;   // window that had the focus before the editor
+static bool          g_talking = false;     // the talk key is held
+static guint         g_tail_timer = 0;      // records the tail after the talk key
+static int           g_pending = 0;         // recordings that wait for their transcript
+static gint64        g_held_us = 0;         // time the talk key was held for the capture
+static gint64        g_talk_since = 0;      // start of the current press of the talk key
 
 // Hide the editor and give the focus back to the window that had it before.
 // Then type `text` there, if not empty.
-static void editor_close(const std::string& text_to_type) {
+static void close_editor(const std::string& text_to_type) {
+    g_audio.stop();
     g_editor.hide();
-    g_editor_state = EditorState::Delivering;
+    g_state = State::Delivering;
     g_tray.set_recording(false);
     unsigned long target = g_target_window;
     int delay = g_cfg.type_delay_ms;
-    bool copy = g_cfg.copy_to_clipboard;
-    std::thread([text_to_type, target, delay, copy]() {
+    std::thread([text_to_type, target, delay]() {
         usleep(100'000);  // let the editor window unmap
         activate_window(target);
-        if (!text_to_type.empty()) {
-            inject_text(text_to_type, delay);
-            if (copy) inject_clipboard(text_to_type);
-        }
+        inject_text(text_to_type, delay);
         run_on_main([] {
-            if (g_editor_state == EditorState::Delivering)
-                g_editor_state = EditorState::Idle;
+            if (g_state == State::Delivering) g_state = State::Idle;
         });
     }).detach();
 }
 
-static void editor_deliver() {
+static void deliver() {
     std::string text = g_editor.text();
     std::cerr << "[app] Editor session done (" << text.size() << " chars)\n";
 
-    if (g_editor_output == EditorOutput::Copy) {
+    if (g_output == Output::Copy) {
         if (!text.empty()) {
             GtkClipboard* clipboard = gtk_clipboard_get(GDK_SELECTION_CLIPBOARD);
             gtk_clipboard_set_text(clipboard, text.c_str(), -1);
             gtk_clipboard_store(clipboard);
             std::cerr << "[app] Copied to clipboard\n";
         }
-        editor_close({});
+        close_editor({});
         return;
     }
-    editor_close(text);
+    close_editor(text);
 }
 
-static void editor_start() {
-    unsigned session = ++g_editor_session;
+// End the capture and queue it for transcription.
+static void submit_capture() {
+    if (g_tail_timer) {
+        g_source_remove(g_tail_timer);
+        g_tail_timer = 0;
+    }
+    std::vector<float> pcm = g_audio.end_capture();
+    gint64 held = g_held_us;
+    g_held_us = 0;
+    if (g_audio.open_failed()) {
+        g_editor.set_note("The microphone could not be opened.");
+        return;
+    }
+    if (held < kMinHoldUs || pcm.empty()) return;
+
+    unsigned session = g_session;
+    ++g_pending;
+    g_editor.set_pending(g_pending);
+    queue::push({session, std::move(pcm), g_editor.context(), [session](std::string text) {
+        run_on_main([session, text]() {
+            if (session != g_session) return;
+            --g_pending;
+            g_editor.set_pending(g_pending);
+            if (!text.empty()) g_editor.insert_transcript(text);
+            if (g_state == State::Finishing && g_pending == 0) deliver();
+        });
+    }});
+}
+
+static void talk_start() {
+    if (g_state != State::Open || g_talking) return;
+    g_talking = true;
+    g_talk_since = g_get_monotonic_time();
+    // A new press during the tail continues the same recording.
+    if (g_tail_timer) {
+        g_source_remove(g_tail_timer);
+        g_tail_timer = 0;
+    } else {
+        g_audio.begin_capture();
+    }
+    g_editor.set_talking(true);
+    g_tray.set_recording(true);
+}
+
+static void talk_stop() {
+    if (!g_talking) return;
+    g_talking = false;
+    g_held_us += g_get_monotonic_time() - g_talk_since;
+    g_editor.set_talking(false);
+    g_tray.set_recording(false);
+    g_tail_timer = g_timeout_add(kTailMs, +[](gpointer) -> gboolean {
+        g_tail_timer = 0;
+        submit_capture();
+        return G_SOURCE_REMOVE;
+    }, nullptr);
+}
+
+static void open_editor() {
+    queue::current_session = ++g_session;
     g_target_window = active_window();
-    g_editor_state = EditorState::Recording;
+    g_state = State::Open;
+    g_talking = false;
+    g_pending = 0;
+    g_held_us = 0;
     g_editor.show();
     g_audio.configure(g_cfg);
     g_audio.start();
-    g_tray.set_recording(true);
-
-    auto fetch = [](size_t from) { return g_audio.copy_from(from); };
-
-    auto handle = [session](const std::vector<float>& pcm,
-                            const std::atomic<bool>& cancelled) {
-        std::string text = g_whisper.transcribe(pcm, g_editor.context());
-        if (text.empty() || is_non_speech(text) || cancelled.load()) return;
-        run_on_main([session, text]() {
-            if (session != g_editor_session ||
-                (g_editor_state != EditorState::Recording &&
-                 g_editor_state != EditorState::Paused &&
-                 g_editor_state != EditorState::Finishing)) return;
-            g_editor.insert_transcript(text);
-        });
-    };
-
-    auto done = [session](bool cancelled) {
-        if (cancelled) return;
-        run_on_main([session]() {
-            if (session == g_editor_session && g_editor_state == EditorState::Finishing)
-                editor_deliver();
-        });
-    };
-
-    g_live.start(g_cfg, fetch, handle, done);
     std::cerr << "[app] Editor session started\n";
 }
 
-static void editor_finish(EditorOutput output) {
-    if (g_editor_state != EditorState::Recording && g_editor_state != EditorState::Paused)
-        return;
-    g_editor_output = output;
-    g_editor_state = EditorState::Finishing;
+static void finish(Output output) {
+    if (g_state != State::Open) return;
+    g_output = output;
+    g_state = State::Finishing;
     g_editor.set_finishing();
-    g_live.finish(g_audio.stop());
-}
-
-static void editor_pause() {
-    if (g_editor_state == EditorState::Recording) {
-        g_audio.set_paused(true);
-        g_live.flush();
-        g_editor_state = EditorState::Paused;
-        g_editor.set_paused(true);
-    } else if (g_editor_state == EditorState::Paused) {
-        g_audio.set_paused(false);
-        g_editor_state = EditorState::Recording;
-        g_editor.set_paused(false);
+    if (g_talking || g_tail_timer) {
+        talk_stop();
+        submit_capture();
     }
+    if (g_pending == 0) deliver();
 }
 
-static void editor_cancel() {
-    if (g_editor_state == EditorState::Idle ||
-        g_editor_state == EditorState::Delivering) return;
-    ++g_editor_session;
-    g_audio.cancel();
-    g_live.cancel();
-    editor_close({});
+static void cancel() {
+    if (g_state == State::Idle || g_state == State::Delivering) return;
+    queue::current_session = ++g_session;
+    if (g_tail_timer) {
+        g_source_remove(g_tail_timer);
+        g_tail_timer = 0;
+    }
+    g_talking = false;
+    close_editor({});
     std::cerr << "[app] Editor session cancelled\n";
 }
 
@@ -244,91 +294,23 @@ static void open_settings() {
     g_settings.show(g_cfg);
 }
 
-// ── Toggle recording ────────────────────────────────────────────────
+// ── Hotkey ──────────────────────────────────────────────────────────
+// The hotkey opens the editor, or closes it and types the text.
 static void on_toggle() {
-    // This is called from the hotkey thread. Schedule work on the GTK main loop.
-    g_idle_add(+[](gpointer) -> gboolean {
-        // A running session keeps its mode when the settings change it.
-        bool editor_active = g_editor_state != EditorState::Idle;
-        bool use_editor = editor_active || (!g_recording.load() && g_cfg.editor_enabled);
-        if (use_editor) {
-            // The hotkey opens the editor, or closes it and types the text.
-            if (g_editor_state == EditorState::Idle) editor_start();
-            else if (g_editor_state != EditorState::Delivering) editor_finish(EditorOutput::Type);
-            return FALSE;
-        }
-        if (!g_recording.load()) {
-            // Start recording
-            g_recording.store(true);
-            g_audio.configure(g_cfg);
-            g_audio.start();
-            g_overlay.show();
-            g_tray.set_recording(true);
-            if (g_cfg.stream_enabled)
-                start_live_session();
-            std::cerr << "[app] Recording started\n";
-        } else {
-            // Stop recording → transcribe → inject
-            g_recording.store(false);
-            g_overlay.hide();
-            g_tray.set_recording(false);
-            std::cerr << "[app] Recording stopped, transcribing...\n";
-
-            auto samples = g_audio.stop();
-            if (g_cfg.stream_enabled) {
-                g_live.finish(std::move(samples));
-                return FALSE;
-            }
-            if (samples.empty()) {
-                std::cerr << "[app] No audio recorded\n";
-                return FALSE;
-            }
-
-            // Run transcription in a thread to keep UI responsive
-            std::thread([samples = std::move(samples), cfg = g_cfg]() {
-                std::string text = g_whisper.transcribe(samples);
-                if (cfg.punctuation_enabled && !text.empty()) {
-                    text = apply_punctuation(text, cfg.punctuation_words);
-                    std::cerr << "[punctuate] Result: \"" << text << "\"\n";
-                }
-                std::cerr << "[app] Transcription done (" << text.size() << " chars)\n";
-                if (!text.empty()) {
-                    inject_text(text, cfg.type_delay_ms);
-                    if (cfg.copy_to_clipboard)
-                        inject_clipboard(text);
-                } else {
-                    std::cerr << "[app] Empty transcription result\n";
-                }
-
-            }).detach();
-        }
-        return FALSE; // one-shot idle callback
-    }, nullptr);
+    run_on_main([] {
+        if (g_state == State::Idle) open_editor();
+        else if (g_state == State::Open) finish(Output::Type);
+    });
 }
 
-// ── Cancel recording (ESC) ──────────────────────────────────────────
-static void on_cancel() {
-    if (g_recording.load()) {
-        g_recording.store(false);
-        g_audio.cancel();
-        g_live.cancel();
-        g_overlay.hide();
-        g_tray.set_recording(false);
-        std::cerr << "[app] Recording cancelled\n";
-    }
-}
-
-// ── GTK activate ────────────────────────────────────────────────────
+// ── GTK setup ───────────────────────────────────────────────────────
 static void setup_gtk() {
-    // Init overlay
-    g_overlay.init(g_cfg);
-    g_overlay.set_esc_callback(on_cancel);
-
     g_editor.init(g_cfg, {
-        editor_pause,
-        [] { editor_finish(EditorOutput::Type); },
-        [] { editor_finish(EditorOutput::Copy); },
-        editor_cancel,
+        talk_start,
+        talk_stop,
+        [] { finish(Output::Type); },
+        [] { finish(Output::Copy); },
+        cancel,
         open_settings,
     });
 
@@ -340,17 +322,14 @@ static void setup_gtk() {
         [] { gtk_main_quit(); },
     }, "psst — voice to text");
 
-    // Audio chunk callback → meter of the overlay and the editor
     g_audio.set_chunk_callback([](const float* data, size_t count) {
         g_editor.push_samples(data, count);
-        g_overlay.push_samples(data, count);
     });
 
-    // Start hotkey listener
     g_hotkey.start();
 
     std::cerr << "[app] Ready — press " << g_cfg.hotkey_bind
-              << " to start recording\n";
+              << " to open the editor\n";
 }
 
 // ── main ────────────────────────────────────────────────────────────
@@ -383,7 +362,7 @@ int main(int argc, char* argv[]) {
     g_cfg = load_config(config_path);
     g_config_path = config_path;
 
-    // Write PID file for --toggle
+    // Write PID file for --toggle and --settings
     {
         std::string pidfile = "/tmp/psst.pid";
         FILE* f = fopen(pidfile.c_str(), "w");
@@ -393,7 +372,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    // SIGUSR1 → toggle recording, SIGUSR2 → open the settings. GLib
+    // SIGUSR1 → like the hotkey, SIGUSR2 → open the settings. GLib
     // delivers them on the main loop.
     g_unix_signal_add(SIGUSR1, +[](gpointer) -> gboolean {
         on_toggle();
@@ -426,7 +405,8 @@ int main(int argc, char* argv[]) {
     // Init GTK
     gtk_init(&argc, &argv);
 
-    // Set up overlay, tray, callbacks
+    // Set up the windows, the tray icon and the callbacks
+    queue::start();
     setup_gtk();
 
     // GTK main loop (blocks until gtk_main_quit)
@@ -436,8 +416,7 @@ int main(int argc, char* argv[]) {
     std::cerr << "[app] Shutting down...\n";
     g_hotkey.stop();
     g_audio.shutdown();
-    g_live.cancel();
-    g_live.join();
+    queue::stop();
     g_whisper.shutdown();
 
     // Remove PID file

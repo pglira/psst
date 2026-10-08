@@ -49,16 +49,12 @@ enabled = true
 # "Punkt" = ""
 
 [editor]
-# Dictate into a text field that you can edit while you speak. Each
-# utterance goes in at the text cursor when you pause.
-# false = no text field; [stream] enabled selects the typing mode.
-enabled = true
-
-# Key bindings in the editor window (GTK accelerator format).
+# The hotkey opens the dictation editor. Hold talk_key to dictate; the text
+# goes in at the text cursor. Key bindings use the GTK accelerator format.
 # Escape cancels. The hotkey from [hotkey] also closes the editor and types.
-pause_key = "<Control>space"           # pause / resume the microphone
-type_key  = "<Control>Return"          # close and type at the previous cursor
-copy_key  = "<Control><Shift>Return"   # close and copy to the clipboard
+talk_key    = "<Control>space"         # hold to dictate
+type_key    = "<Control>Return"        # close and type at the previous cursor
+copy_key    = "<Control><Shift>Return" # close and copy to the clipboard
 correct_key = "<Control>r"             # correct the selection (or all text) with an LLM
 undo_key    = "<Control>z"             # undo the last correction
 
@@ -72,18 +68,6 @@ model = "haiku"
 # System prompt of the correction.
 prompt = "You correct text from speech recognition. Fix recognition errors, spelling, grammar and punctuation. Speech recognition often writes a word that sounds like the intended word but does not fit the context, especially technical terms, product names and names (for example \"cloud\" for \"Claude\", \"def container\" for \"devcontainer\", \"get hub\" for \"GitHub\"). Replace such words with the word that the context implies. Keep the wording, the language, the meaning and the line breaks. Do not add, remove or translate content. Output only the corrected text."
 
-[stream]
-# Without the editor: type text while you speak; each utterance is
-# transcribed and typed when you pause. false = type all text after the
-# recording stops. pause_ms and max_utterance_ms also apply to the editor.
-enabled = true
-
-# Silence in milliseconds that ends an utterance.
-pause_ms = 600
-
-# Utterances longer than this (milliseconds) are split at a quiet point.
-max_utterance_ms = 20000
-
 [gpu]
 # Use GPU acceleration (requires CUDA build)
 enabled = true
@@ -95,10 +79,6 @@ device = 0
 # Keybinding to toggle recording.
 # Format: modifier+key (e.g. "super+v", "ctrl+shift+v")
 bind = "super+v"
-
-[output]
-# Also copy transcribed text to the system clipboard
-copy_to_clipboard = false
 
 [inject]
 # Inter-keystroke delay in milliseconds when typing the transcript.

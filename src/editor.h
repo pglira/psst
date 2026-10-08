@@ -1,7 +1,7 @@
 #pragma once
 #include "config.h"
 #include "correct.h"
-#include "overlay.h"
+#include "meter.h"
 #include <gtk/gtk.h>
 #include <functional>
 #include <mutex>
@@ -9,14 +9,16 @@
 
 // Dictation window with an editable text field.
 //
-// Dictated text goes in at the text cursor, and the user can edit the text
-// while dictating. Buttons and key bindings pause the recording, correct the
-// text with an LLM (and undo that), type the text into the previously
-// focused window, copy it to the clipboard, or cancel.
+// The user holds the talk key (or the Talk button) to dictate; the
+// transcript goes in at the text cursor, and the user can edit the text
+// between dictations. Buttons and key bindings also correct the text with an
+// LLM (and undo that), type the text into the previously focused window,
+// copy it to the clipboard, or cancel.
 class EditorWindow {
 public:
     struct Actions {
-        std::function<void()> pause;   // pause or resume the recording
+        std::function<void()> talk_start;  // talk key or button pressed
+        std::function<void()> talk_stop;   // talk key or button released
         std::function<void()> type;    // close and type the text
         std::function<void()> copy;    // close and copy the text
         std::function<void()> cancel;  // close and discard the text
@@ -28,23 +30,27 @@ public:
     // Use the key bindings, spoken commands and correction settings of `cfg`.
     void reconfigure(const Config& cfg);
 
-    // The X11 window ID of the editor, or 0.
-    unsigned long xid() const;
 
     // Show the window with an empty text field and give it the input focus.
     void show();
     void hide();
-    bool is_visible() const;
 
     // Feed the VU meter. Call from the audio thread.
     void push_samples(const float* data, size_t count);
 
-    void set_paused(bool paused);
+    // Show whether the user talks.
+    void set_talking(bool talking);
 
-    // Disable the controls while the last utterances are transcribed.
+    // Show a short message next to the VU meter.
+    void set_note(const std::string& text);
+
+    // Show the number of recordings that wait for their transcript.
+    void set_pending(int pending);
+
+    // Disable the controls while the last recordings are transcribed.
     void set_finishing();
 
-    // Insert the transcript of one utterance at the text cursor. Spoken
+    // Insert the transcript of one recording at the text cursor. Spoken
     // commands apply to the text before the cursor.
     void insert_transcript(const std::string& transcript);
 
@@ -63,12 +69,13 @@ private:
     static gboolean on_key(GtkWidget* widget, GdkEventKey* event, gpointer data);
     static gboolean on_tick(gpointer data);
     void update_context();
-    enum class Phase { Recording, Paused, Finishing };
+    enum class Phase { Ready, Talking, Finishing };
+    static gboolean on_key_release(GtkWidget* widget, GdkEventKey* event, gpointer data);
+    bool releases_talk_key(const GdkEventKey* event) const;
     void set_status(Phase phase);
     void update_labels();
     static gboolean on_draw_icon(GtkWidget* widget, cairo_t* cr, gpointer data);
     void set_button(GtkWidget* button, const char* name, const Key& key);
-    void set_note(const std::string& text);
 
     // LLM correction of the selection, or of all text without a selection.
     void correct();
@@ -87,15 +94,15 @@ private:
 
     Config cfg_;
     Actions actions_;
-    Key pause_key_, type_key_, copy_key_, correct_key_, undo_key_;
+    Key talk_key_, type_key_, copy_key_, correct_key_, undo_key_;
 
     GtkWidget* window_   = nullptr;
     GtkWidget* view_     = nullptr;
     GtkWidget* level_    = nullptr;  // VU meter
     GtkWidget* status_   = nullptr;  // state label
     GtkWidget* icon_     = nullptr;  // state icon
-    Phase phase_  = Phase::Recording;
-    GtkWidget* pause_btn_ = nullptr;
+    Phase phase_  = Phase::Ready;
+    GtkWidget* talk_btn_ = nullptr;
     GtkWidget* type_btn_  = nullptr;
     GtkWidget* copy_btn_  = nullptr;
     GtkWidget* cancel_btn_ = nullptr;

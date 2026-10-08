@@ -51,16 +51,11 @@ private:
     GtkWidget* prompt_ = nullptr;
     GtkWidget* translate_ = nullptr;
     GtkWidget* gpu_ = nullptr;
-    GtkWidget* editor_ = nullptr;
-    GtkWidget* stream_ = nullptr;
     GtkWidget* commands_ = nullptr;
-    GtkWidget* pause_ms_ = nullptr;
-    GtkWidget* max_utterance_ = nullptr;
     GtkWidget* type_delay_ = nullptr;
-    GtkWidget* clipboard_ = nullptr;
     GtkWidget* device_ = nullptr;
     GtkWidget* correction_command_ = nullptr;
     GtkWidget* correction_model_ = nullptr;
     GtkTextBuffer* correction_prompt_ = nullptr;
-    KeyField hotkey_, pause_key_, type_key_, copy_key_, correct_key_, undo_key_;
+    KeyField hotkey_, talk_key_, type_key_, copy_key_, correct_key_, undo_key_;
 };
