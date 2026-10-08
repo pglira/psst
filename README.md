@@ -1,20 +1,26 @@
 # psst
 
 Voice-to-text for Linux using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
-Press a hotkey to record and speak; text is typed at the cursor each time you
-pause. Press the hotkey again to stop.
+Press a hotkey to open a dictation window and speak. Each time you pause, the
+text goes into an editable text field at its cursor. Then type the text into
+the previous window, or copy it to the clipboard.
 
 ## Features
 
 - **Global hotkey** (default: `Super+V`) to toggle recording
 - **Real-time VU meter overlay** shown while recording (ESC to cancel)
 - **GPU-accelerated** transcription via whisper.cpp (CUDA)
-- **Live typing** — each utterance is typed into the focused window when you
-  pause, while the recording continues
+- **Dictation editor** — edit the text while you dictate; pause, type, or
+  copy with buttons or key bindings
+- **Live typing** — without the editor, each utterance is typed into the
+  focused window when you pause
 - **Edit commands** — say "delete word" or "delete sentence" (or "Wort
   löschen", "Satz löschen") to remove text
 - **Spoken punctuation** — say "colon", "dash", "new line" (or "Doppelpunkt",
   "Gedankenstrich", "neue Zeile") to insert `:`, `–`, a line break
+- **Settings window** — change the settings in a window (`Ctrl+,` in the
+  editor, the tray menu, or `psst --settings`); they apply at once
+- **Tray icon** — click to start or stop dictation; menu for settings and quit
 - **Configurable** via TOML config file
 - **Model loaded once** at startup — runs in background, always ready
 
@@ -73,6 +79,9 @@ cmake --build build -j$(nproc)
 
 # Toggle recording from another process (for Wayland WM keybindings)
 ./build/psst --toggle
+
+# Open the settings window of the running instance
+./build/psst --settings
 ```
 
 ## Configuration
@@ -85,7 +94,8 @@ mkdir -p ~/.config/psst
 cp config.toml ~/.config/psst/
 ```
 
-See [config.toml](config.toml) for all options.
+See [config.toml](config.toml) for all options. The settings window writes
+the same file; it keeps comments and the `[punctuation.words]` table.
 
 ### Spoken punctuation
 
@@ -108,10 +118,27 @@ Commands such as "Punkt", "period", or "Komma" also match the normal word
 A "new line" command types a Return key, which sends the message in many
 chat applications.
 
+### Dictation editor
+
+With `[editor] enabled = true` (the default), the hotkey opens a window with a
+text field. Each utterance goes in at the text cursor when you pause, so you
+can click into the text or type corrections while you dictate.
+
+| Key (default)       | Button | Action                                         |
+|---------------------|--------|------------------------------------------------|
+| `Ctrl+Space`        | Pause  | Pause or resume the microphone                 |
+| `Ctrl+Enter`        | Type   | Close and type the text into the previous window |
+| `Ctrl+Shift+Enter`  | Copy   | Close and copy the text to the clipboard       |
+| `Esc`               | Cancel | Close and discard the text                     |
+
+The hotkey (`Super+V`) does the same as Type. Change the key bindings in
+`[editor]`. On Wayland, psst cannot give the focus back to the previous
+window; Type relies on the compositor to do it.
+
 ### Live typing and edit commands
 
-With `[stream] enabled = true` (the default), psst types each utterance when
-you pause for `pause_ms` (600 ms). Commands work across utterances: "comma"
+With `[editor] enabled = false` and `[stream] enabled = true`, psst types
+each utterance into the focused window when you pause for `pause_ms` (600 ms). Commands work across utterances: "comma"
 at the start of an utterance replaces the period that Whisper put at the end
 of the previous one.
 
@@ -119,6 +146,8 @@ of the previous one.
 |------------------------------|-----------------------------------------|
 | "delete word" / "Wort löschen"     | Removes the last word and its punctuation |
 | "delete sentence" / "Satz löschen" | Removes the last sentence             |
+
+In the editor, the edit commands act on the text before the cursor.
 
 psst edits with BackSpace key presses and only knows the text that it typed
 in the current recording. Do not move the cursor or type while you dictate,

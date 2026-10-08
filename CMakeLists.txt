@@ -56,6 +56,9 @@ add_executable(psst
     src/inject.cpp
     src/punctuate.cpp
     src/stream.cpp
+    src/editor.cpp
+    src/settings.cpp
+    src/tray.cpp
 )
 
 target_include_directories(psst PRIVATE src)

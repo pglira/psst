@@ -46,10 +46,44 @@ static std::string resolve_model_path(const Config& cfg) {
     return model.string();
 }
 
+bool Transcriber::reload(const Config& cfg) {
+    std::lock_guard<std::mutex> load_lock(load_mtx_);
+    if (shut_down_) return false;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        bool same_model = ctx_ && cfg.model_size == cfg_.model_size &&
+                          cfg.model_path == cfg_.model_path &&
+                          cfg.gpu_enabled == cfg_.gpu_enabled &&
+                          cfg.gpu_device == cfg_.gpu_device;
+        if (same_model) {
+            cfg_ = cfg;
+            return true;
+        }
+    }
+
+    whisper_context* ctx = load_model(cfg);
+    if (!ctx) return false;
+
+    whisper_context* old = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mtx_);
+        old = ctx_;
+        ctx_ = ctx;
+        cfg_ = cfg;
+    }
+    if (old) whisper_free(old);
+    return true;
+}
+
 bool Transcriber::init(const Config& cfg) {
     cfg_ = cfg;
+    ctx_ = load_model(cfg);
+    return ctx_ != nullptr;
+}
+
+whisper_context* Transcriber::load_model(const Config& cfg) {
     std::string path = resolve_model_path(cfg);
-    if (path.empty()) return false;
+    if (path.empty()) return nullptr;
 
     whisper_context_params cparams = whisper_context_default_params();
     cparams.use_gpu    = cfg.gpu_enabled;
@@ -60,19 +94,19 @@ bool Transcriber::init(const Config& cfg) {
               << " (GPU=" << (cfg.gpu_enabled ? "yes" : "no")
               << ", device=" << cfg.gpu_device << ")\n";
 
-    ctx_ = whisper_init_from_file_with_params(path.c_str(), cparams);
-    if (!ctx_) {
+    whisper_context* ctx = whisper_init_from_file_with_params(path.c_str(), cparams);
+    if (!ctx) {
         std::cerr << "[whisper] Failed to load model\n";
-        return false;
+        return nullptr;
     }
 
     std::cerr << "[whisper] Model loaded successfully\n";
-    return true;
+    return ctx;
 }
 
 std::string Transcriber::transcribe(const std::vector<float>& pcm_raw,
                                     const std::string& context) {
-    if (!ctx_ || pcm_raw.empty()) return {};
+    if (pcm_raw.empty()) return {};
 
     std::vector<float> pcm = pcm_raw;
 
@@ -102,6 +136,9 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw,
     if (pcm.size() < min_samples)
         pcm.resize(min_samples, 0.0f);
 
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (!ctx_) return {};
+
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
     params.print_progress   = false;
     params.print_special    = false;
@@ -130,7 +167,6 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw,
     std::cerr << "[whisper] Transcribing " << pcm_raw.size() / 16000.0f
               << "s of audio...\n";
 
-    std::lock_guard<std::mutex> lock(mtx_);
     busy_.store(true);
 
     // Create a fresh state for each transcription to avoid stale GPU state
@@ -171,6 +207,9 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw,
 }
 
 void Transcriber::shutdown() {
+    std::lock_guard<std::mutex> load_lock(load_mtx_);
+    std::lock_guard<std::mutex> lock(mtx_);
+    shut_down_ = true;
     if (ctx_) {
         whisper_free(ctx_);
         ctx_ = nullptr;

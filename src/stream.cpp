@@ -126,6 +126,12 @@ void LiveDictation::finish(std::vector<float> samples) {
     session_->finished = true;
 }
 
+void LiveDictation::flush() {
+    if (!session_) return;
+    std::lock_guard<std::mutex> lk(session_->mtx);
+    session_->flush = true;
+}
+
 void LiveDictation::cancel() {
     if (session_) session_->cancelled.store(true);
 }
@@ -145,8 +151,11 @@ void LiveDictation::run(std::thread previous, std::shared_ptr<Session> session,
 
     while (!session->cancelled.load() && !last) {
         std::vector<float> fresh;
+        bool flush = false;
         {
             std::lock_guard<std::mutex> lk(session->mtx);
+            flush = session->flush;
+            session->flush = false;
             if (session->finished) {
                 last = true;
                 const auto& all = session->final_samples;
@@ -158,7 +167,7 @@ void LiveDictation::run(std::thread previous, std::shared_ptr<Session> session,
 
         audio.insert(audio.end(), fresh.begin(), fresh.end());
         auto ranges = splitter.feed(fresh.data(), fresh.size());
-        if (last) {
+        if (last || flush) {
             auto rest = splitter.flush();
             ranges.insert(ranges.end(), rest.begin(), rest.end());
         }

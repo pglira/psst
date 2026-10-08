@@ -9,6 +9,10 @@ class AudioRecorder {
 public:
     bool init(const Config& cfg);
 
+    // Use the audio settings of `cfg` for the next recording. Call when no
+    // recording runs.
+    void configure(const Config& cfg) { cfg_ = cfg; }
+
     // Start recording in a background thread.
     void start();
 
@@ -22,6 +26,10 @@ public:
     void cancel();
 
     bool is_recording() const { return recording_.load(); }
+
+    // While paused, the recorder drops the microphone input; the recording
+    // continues with the input after the pause.
+    void set_paused(bool paused) { paused_.store(paused); }
 
     // Callback invoked from the recording thread with each chunk of new samples.
     // Used by the overlay to display the spectrum.
@@ -37,6 +45,7 @@ private:
     Config cfg_;
     std::atomic<bool> recording_{false};
     std::atomic<bool> cancel_{false};
+    std::atomic<bool> paused_{false};
 
     std::mutex samples_mtx_;
     std::vector<float> samples_;

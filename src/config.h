@@ -21,6 +21,12 @@ struct Config {
     int  stream_pause_ms         = 600;    // silence that ends an utterance
     int  stream_max_utterance_ms = 20000;  // longer utterances are split
 
+    // editor (dictation window with an editable text field)
+    bool        editor_enabled   = true;
+    std::string editor_pause_key = "<Control>space";
+    std::string editor_type_key  = "<Control>Return";
+    std::string editor_copy_key  = "<Control><Shift>Return";
+
     // gpu
     bool gpu_enabled = true;
     int  gpu_device  = 0;
@@ -41,6 +47,11 @@ struct Config {
 
 // Load config from TOML file. Missing fields use defaults.
 Config load_config(const std::string& path);
+
+// Write the settings of `cfg` to the TOML file at `path`. Lines with other
+// keys and comments stay as they are; missing keys and sections are added.
+// [punctuation.words] is not written. Returns false on a write error.
+bool save_config(const std::string& path, const Config& cfg);
 
 // Return XDG config path: ~/.config/psst/config.toml
 std::string default_config_path();

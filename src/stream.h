@@ -73,6 +73,9 @@ public:
     // remaining utterances, then end the session.
     void finish(std::vector<float> samples);
 
+    // End the utterance in progress now, e.g. before a pause in the recording.
+    void flush();
+
     // End the current session without processing more utterances.
     void cancel();
 
@@ -85,6 +88,7 @@ private:
     struct Session {
         std::mutex mtx;
         bool finished = false;
+        bool flush = false;
         std::vector<float> final_samples;
         std::atomic<bool> cancelled{false};
     };

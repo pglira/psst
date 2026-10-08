@@ -3,6 +3,7 @@
 #include <pulse/error.h>
 #include <iostream>
 #include <thread>
+#include <algorithm>
 #include <cstring>
 
 struct AudioRecorder::PaImpl {
@@ -27,6 +28,7 @@ void AudioRecorder::start() {
         samples_.clear();
     }
     cancel_.store(false);
+    paused_.store(false);
     recording_.store(true);
 
     pa_->thread = std::thread(&AudioRecorder::record_loop, this);
@@ -101,6 +103,13 @@ void AudioRecorder::record_loop() {
                            chunk.size() * sizeof(float), &err) < 0) {
             std::cerr << "[audio] Read error: " << pa_strerror(err) << "\n";
             break;
+        }
+
+        if (paused_.load()) {
+            std::fill(chunk.begin(), chunk.end(), 0.0f);
+            if (chunk_cb_)
+                chunk_cb_(chunk.data(), chunk.size());
+            continue;
         }
 
         {

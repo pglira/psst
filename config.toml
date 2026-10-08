@@ -48,9 +48,22 @@ enabled = true
 # "scratch that" = "<delete-sentence>"
 # "Punkt" = ""
 
+[editor]
+# Dictate into a text field that you can edit while you speak. Each
+# utterance goes in at the text cursor when you pause.
+# false = no text field; [stream] enabled selects the typing mode.
+enabled = true
+
+# Key bindings in the editor window (GTK accelerator format).
+# Escape cancels. The hotkey from [hotkey] also closes the editor and types.
+pause_key = "<Control>space"           # pause / resume the microphone
+type_key  = "<Control>Return"          # close and type at the previous cursor
+copy_key  = "<Control><Shift>Return"   # close and copy to the clipboard
+
 [stream]
-# Type text while you speak: each utterance is transcribed and typed when
-# you pause. false = type all text after the recording stops.
+# Without the editor: type text while you speak; each utterance is
+# transcribed and typed when you pause. false = type all text after the
+# recording stops. pause_ms and max_utterance_ms also apply to the editor.
 enabled = true
 
 # Silence in milliseconds that ends an utterance.

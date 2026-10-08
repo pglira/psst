@@ -21,6 +21,12 @@ public:
     std::string transcribe(const std::vector<float>& pcm,
                            const std::string& context = {});
 
+    // Use the settings of `cfg` for the next transcriptions. If `cfg` selects
+    // another model, load it first; transcriptions continue with the old
+    // model while it loads. Loads run one at a time. Returns false if the
+    // load fails; the old model and settings then stay.
+    bool reload(const Config& cfg);
+
     // Release model resources.
     void shutdown();
 
@@ -32,6 +38,10 @@ public:
 private:
     whisper_context* ctx_ = nullptr;
     Config cfg_;
-    std::mutex mtx_;
+    static whisper_context* load_model(const Config& cfg);
+
+    std::mutex mtx_;        // guards ctx_ and cfg_
+    std::mutex load_mtx_;   // serializes model loads and shutdown
+    bool shut_down_ = false;
     std::atomic<bool> busy_{false};
 };

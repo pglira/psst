@@ -1,5 +1,6 @@
 #include "hotkey.h"
 #include <iostream>
+#include <chrono>
 #include <thread>
 #include <cstdlib>
 #include <cstring>
@@ -9,6 +10,16 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#endif
+
+#ifdef HAS_X11
+// Set by the X error handler while the hotkey is grabbed.
+static std::atomic<bool> g_grab_failed{false};
+
+static int on_grab_error(Display*, XErrorEvent* ev) {
+    if (ev->error_code == BadAccess) g_grab_failed.store(true);
+    return 0;
+}
 #endif
 
 struct HotkeyListener::Impl {
@@ -51,7 +62,7 @@ void HotkeyListener::parse_binding(const std::string& bind) {
     while (pos < lower.size()) {
         auto next = lower.find('+', pos);
         if (next == std::string::npos) {
-            key_name = lower.substr(pos);
+            key_name = bind.substr(pos);
             break;
         }
         part = lower.substr(pos, next - pos);
@@ -74,17 +85,16 @@ void HotkeyListener::parse_binding(const std::string& bind) {
 
     // Convert key name to keysym
     // Handle single character keys
-    KeySym sym = NoSymbol;
-    if (key_name.size() == 1) {
-        sym = XStringToKeysym(key_name.c_str());
-        if (sym == NoSymbol) {
-            // Try uppercase
-            std::string upper = key_name;
-            upper[0] = (char)toupper(upper[0]);
-            sym = XStringToKeysym(upper.c_str());
-        }
-    } else {
-        sym = XStringToKeysym(key_name.c_str());
+    // Try the name as written, in lowercase, and capitalized ("f9" → "F9").
+    KeySym sym = XStringToKeysym(key_name.c_str());
+    std::string lower_name = key_name;
+    std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+    if (sym == NoSymbol)
+        sym = XStringToKeysym(lower_name.c_str());
+    if (sym == NoSymbol) {
+        std::string capitalized = lower_name;
+        capitalized[0] = (char)toupper(capitalized[0]);
+        sym = XStringToKeysym(capitalized.c_str());
     }
 
     if (sym == NoSymbol) {
@@ -135,6 +145,7 @@ bool HotkeyListener::init(const Config& cfg, Callback on_toggle) {
 
 void HotkeyListener::start() {
     if (session_type_ == "x11") {
+        grab_result_.store(-1);
         running_.store(true);
         impl_->thread = std::thread(&HotkeyListener::listen_x11, this);
     }
@@ -145,13 +156,26 @@ void HotkeyListener::listen_x11() {
     Window root = DefaultRootWindow(impl_->display);
 
     // Grab with various lock-key combinations (NumLock, CapsLock, ScrollLock)
+    // Another program can hold the key; X reports BadAccess for the grab.
     unsigned int lock_masks[] = {0, LockMask, Mod2Mask, LockMask | Mod2Mask};
+    g_grab_failed.store(false);
+    auto old_handler = XSetErrorHandler(on_grab_error);
     for (auto lm : lock_masks) {
         XGrabKey(impl_->display, (int)keycode_, mod_mask_ | lm, root,
                  False, GrabModeAsync, GrabModeAsync);
     }
     XSelectInput(impl_->display, root, KeyPressMask);
-    XFlush(impl_->display);
+    XSync(impl_->display, False);
+    XSetErrorHandler(old_handler);
+    bool grabbed = !g_grab_failed.load();
+    grab_result_.store(grabbed ? 1 : 0);
+    if (!grabbed) {
+        std::cerr << "[hotkey] " << cfg_.hotkey_bind << " is taken by another program\n";
+        for (auto lm : lock_masks)
+            XUngrabKey(impl_->display, (int)keycode_, mod_mask_ | lm, root);
+        XFlush(impl_->display);
+        return;
+    }
 
     std::cerr << "[hotkey] Listening for " << cfg_.hotkey_bind << "\n";
 
@@ -172,6 +196,34 @@ void HotkeyListener::listen_x11() {
         XUngrabKey(impl_->display, (int)keycode_, mod_mask_ | lm, root);
     }
     XFlush(impl_->display);
+#endif
+}
+
+bool HotkeyListener::rebind(const std::string& bind) {
+#ifdef HAS_X11
+    if (session_type_ != "x11" || !impl_ || !impl_->display) return false;
+    stop();
+    unsigned int old_mods = mod_mask_, old_key = keycode_;
+    std::string old_bind = cfg_.hotkey_bind;
+    parse_binding(bind);
+    bool ok = keycode_ != 0;
+    if (ok) {
+        cfg_.hotkey_bind = bind;
+        start();
+        for (int i = 0; i < 100 && grab_result_.load() < 0; ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        ok = grab_result_.load() == 1;
+        if (ok) return true;
+        stop();
+    }
+    mod_mask_ = old_mods;
+    keycode_ = old_key;
+    cfg_.hotkey_bind = old_bind;
+    start();
+    return false;
+#else
+    (void)bind;
+    return false;
 #endif
 }
 

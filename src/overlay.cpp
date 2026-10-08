@@ -46,8 +46,7 @@ void OverlayWindow::init(const Config& cfg) {
 
 void OverlayWindow::show() {
     if (!window_) return;
-    level_.store(0.0f);
-    peak_db_ = kNoiseFloorDb;  // don't carry the previous recording's scale over
+    meter_.reset();  // don't carry the previous recording's scale over
     last_filled_ = -1;
     gtk_widget_show(window_);
     grab_esc();
@@ -97,6 +96,35 @@ bool OverlayWindow::is_visible() const {
 }
 
 void OverlayWindow::push_samples(const float* data, size_t count) {
+    meter_.push(data, count);
+}
+
+void draw_level_meter(cairo_t* cr, double x, double y, double w, double h, float level) {
+    int filled = std::min(kMeterSegments, (int)(level * (float)kMeterSegments));
+    double seg_w = w / (double)kMeterSegments;
+    double gap = 2.0;
+
+    for (int i = 0; i < kMeterSegments; ++i) {
+        double sx = x + (double)i * seg_w;
+        if (i < filled) {
+            float t = (float)i / (float)kMeterSegments;
+            double r = std::min(1.0, (double)t * 2.5);
+            double g = std::min(1.0, 2.0 * (1.0 - (double)t));
+            cairo_set_source_rgb(cr, r, g, 0.15);
+        } else {
+            cairo_set_source_rgba(cr, 0.25, 0.25, 0.3, 0.6);
+        }
+        cairo_rectangle(cr, sx, y, seg_w - gap, h);
+        cairo_fill(cr);
+    }
+}
+
+void LevelMeter::reset() {
+    level_.store(0.0f);
+    peak_db_ = kNoiseFloorDb;
+}
+
+void LevelMeter::push(const float* data, size_t count) {
     if (count == 0) return;
 
     float sum = 0.0f;
@@ -125,7 +153,7 @@ gboolean OverlayWindow::on_draw(GtkWidget* widget, cairo_t* cr, gpointer data) {
 
     int w = gtk_widget_get_allocated_width(widget);
     int h = gtk_widget_get_allocated_height(widget);
-    float lvl = self->level_.load();
+    float lvl = self->meter_.level();
 
     // Dark background
     cairo_set_source_rgba(cr, 0.12, 0.12, 0.15, 0.88);
@@ -142,27 +170,8 @@ gboolean OverlayWindow::on_draw(GtkWidget* widget, cairo_t* cr, gpointer data) {
     cairo_move_to(cr, pad + 10, h / 2.0 + 5);
     cairo_show_text(cr, "\xe2\x97\x8f REC");
 
-    // Meter: 20 colored segments
     double mx = pad + 75, my = pad + 6, mw = (double)w - mx - pad - 10, mh = (double)h - 2.0 * pad - 12;
-    int bars = 20;
-    int filled = (int)(lvl * (float)bars);
-    if (filled > bars) filled = bars;
-    double seg_w = mw / (double)bars;
-    double gap = 2.0;
-
-    for (int i = 0; i < bars; ++i) {
-        double sx = mx + (double)i * seg_w;
-        if (i < filled) {
-            float t = (float)i / (float)bars;
-            double r = std::min(1.0, (double)t * 2.5);
-            double g = std::min(1.0, 2.0 * (1.0 - (double)t));
-            cairo_set_source_rgb(cr, r, g, 0.15);
-        } else {
-            cairo_set_source_rgba(cr, 0.25, 0.25, 0.3, 0.6);
-        }
-        cairo_rectangle(cr, sx, my, seg_w - gap, mh);
-        cairo_fill(cr);
-    }
+    draw_level_meter(cr, mx, my, mw, mh, lvl);
 
     // "ESC" hint at bottom-right
     cairo_set_font_size(cr, 10.0);
@@ -183,8 +192,8 @@ gboolean OverlayWindow::on_draw(GtkWidget* widget, cairo_t* cr, gpointer data) {
 gboolean OverlayWindow::on_tick(gpointer data) {
     auto* self = static_cast<OverlayWindow*>(data);
 
-    float lvl = self->level_.load();
-    int filled = (int)(lvl * 20.0f);
+    float lvl = self->meter_.level();
+    int filled = (int)(lvl * (float)kMeterSegments);
 
     if (filled != self->last_filled_) {
         self->last_filled_ = filled;

@@ -15,6 +15,11 @@ public:
     // Stop listening.
     void stop();
 
+    // Listen for `bind` instead of the current binding. Returns false if
+    // `bind` is invalid or another program holds the key; the current
+    // binding then stays.
+    bool rebind(const std::string& bind);
+
     // Returns "x11" or "wayland" based on detected session.
     static std::string detect_session();
 
@@ -22,11 +27,13 @@ public:
 
 private:
     void listen_x11();
+    // Parse `bind` into mod_mask_ and keycode_; keycode_ is 0 if invalid.
     void parse_binding(const std::string& bind);
 
     Config cfg_;
     Callback callback_;
     std::atomic<bool> running_{false};
+    std::atomic<int> grab_result_{-1};  // -1 pending, 0 failed, 1 grabbed
 
     std::string session_type_;
     unsigned int mod_mask_ = 0;

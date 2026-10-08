@@ -90,6 +90,40 @@ static void inject_wayland(size_t backspaces, const std::string& text) {
         std::cerr << "[inject] Typed via wtype (" << text.size() << " chars)\n";
 }
 
+unsigned long active_window() {
+    if (HotkeyListener::detect_session() != "x11") return 0;
+#ifdef HAS_XDO
+    xdo_t* xdo = xdo_new(nullptr);
+    if (!xdo) return 0;
+    Window win = 0;
+    if (xdo_get_active_window(xdo, &win) != XDO_SUCCESS) win = 0;
+    xdo_free(xdo);
+    return win;
+#else
+    unsigned long win = 0;
+    if (FILE* proc = popen("xdotool getactivewindow 2>/dev/null", "r")) {
+        if (std::fscanf(proc, "%lu", &win) != 1) win = 0;
+        pclose(proc);
+    }
+    return win;
+#endif
+}
+
+void activate_window(unsigned long window) {
+    if (window == 0) return;
+#ifdef HAS_XDO
+    xdo_t* xdo = xdo_new(nullptr);
+    if (!xdo) return;
+    xdo_activate_window(xdo, window);
+    xdo_wait_for_window_active(xdo, window, 1);
+    xdo_free(xdo);
+#else
+    std::string cmd = "xdotool windowactivate --sync " + std::to_string(window);
+    if (std::system(cmd.c_str()) != 0)
+        std::cerr << "[inject] xdotool windowactivate failed\n";
+#endif
+}
+
 void inject_text(const std::string& text, int type_delay_ms) {
     inject_edit(0, text, type_delay_ms);
 }
