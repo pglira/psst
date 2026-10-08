@@ -2,6 +2,7 @@
 #include "inject.h"
 #include "punctuate.h"
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <thread>
@@ -472,6 +473,7 @@ void EditorWindow::correct() {
     gtk_text_buffer_move_mark(buffer_, correct_from_, &from);
     gtk_text_buffer_move_mark(buffer_, correct_to_, &to);
     correct_original_ = text;
+    correct_start_us_ = g_get_monotonic_time();
     gtk_widget_set_sensitive(correct_btn_, FALSE);
     set_note("Correcting…");
     corrector_.run(cfg_, text, [this](bool ok, const std::string& result) {
@@ -481,8 +483,12 @@ void EditorWindow::correct() {
 
 void EditorWindow::on_corrected(bool ok, const std::string& result) {
     gtk_widget_set_sensitive(correct_btn_, phase_ != Phase::Finishing);
+    // Duration of the correction, e.g. " in 2.3s".
+    char took[32];
+    std::snprintf(took, sizeof took, " in %.1fs",
+                  (g_get_monotonic_time() - correct_start_us_) / 1e6);
     if (!ok) {
-        set_note("Correction failed: " + result);
+        set_note("Correction failed" + std::string(took) + ": " + result);
         return;
     }
     // Dictation or typing inside the range during the correction wins.
@@ -494,7 +500,7 @@ void EditorWindow::on_corrected(bool ok, const std::string& result) {
     std::string corrected = valid;
     g_free(valid);
     if (corrected == correct_original_) {
-        set_note("No corrections.");
+        set_note("No corrections (checked" + std::string(took) + ").");
         return;
     }
 
@@ -511,7 +517,7 @@ void EditorWindow::on_corrected(bool ok, const std::string& result) {
     undo_corrected_ = corrected;
     undo_available_ = true;
     gtk_widget_set_sensitive(undo_btn_, phase_ != Phase::Finishing);
-    set_note("Corrected.");
+    set_note("Corrected" + std::string(took) + ".");
 }
 
 void EditorWindow::undo_correction() {

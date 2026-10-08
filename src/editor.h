@@ -120,6 +120,7 @@ private:
     GtkTextMark* correct_from_ = nullptr;
     GtkTextMark* correct_to_   = nullptr;
     std::string  correct_original_;
+    gint64       correct_start_us_ = 0;  // monotonic start time of the correction
     // Range of the last correction, for undo.
     GtkTextMark* undo_from_ = nullptr;
     GtkTextMark* undo_to_   = nullptr;
