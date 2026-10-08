@@ -4,6 +4,8 @@
 #include <mutex>
 #include <atomic>
 #include <functional>
+#include <memory>
+#include <string>
 
 // Microphone input for push-to-talk.
 //
@@ -23,11 +25,12 @@ public:
     // Open the microphone in a background thread.
     void start();
 
-    // Close the microphone and drop all input.
+    // Close the microphone and drop all input. Never blocks: a background
+    // thread that still waits for the audio server ends on its own later.
     void stop();
 
-    // True if the microphone did not open at the last start().
-    bool open_failed() const { return open_failed_.load(); }
+    // True if the microphone is open and delivers input.
+    bool mic_open() const;
 
     // Keep all input from now on, including the pre-roll.
     void begin_capture();
@@ -40,22 +43,23 @@ public:
     using ChunkCallback = std::function<void(const float* data, size_t count)>;
     void set_chunk_callback(ChunkCallback cb) { chunk_cb_ = std::move(cb); }
 
+    // Callback invoked from the recording thread when the microphone does
+    // not open or stops with an error.
+    using ErrorCallback = std::function<void(const std::string& message)>;
+    void set_error_callback(ErrorCallback cb) { error_cb_ = std::move(cb); }
+
     void shutdown();
     ~AudioRecorder();
 
 private:
-    void record_loop();
+    // State of one opening of the microphone, shared with its thread.
+    struct Session;
+    static void record_loop(Config cfg, std::shared_ptr<Session> s,
+                            ChunkCallback chunk_cb, ErrorCallback error_cb);
 
     Config cfg_;
-    std::atomic<bool> running_{false};
-    std::atomic<bool> open_failed_{false};
-
-    std::mutex samples_mtx_;
-    std::vector<float> samples_;
-    bool capturing_ = false;  // guarded by samples_mtx_
+    std::shared_ptr<Session> session_;  // null while the microphone is closed
 
     ChunkCallback chunk_cb_;
-
-    struct PaImpl;
-    PaImpl* pa_ = nullptr;
+    ErrorCallback error_cb_;
 };

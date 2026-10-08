@@ -169,7 +169,7 @@ static void submit_capture() {
     std::vector<float> pcm = g_audio.end_capture();
     gint64 held = g_held_us;
     g_held_us = 0;
-    if (g_audio.open_failed()) {
+    if (!g_audio.mic_open()) {
         g_editor.set_note("The microphone could not be opened.");
         return;
     }
@@ -324,6 +324,11 @@ static void setup_gtk() {
 
     g_audio.set_chunk_callback([](const float* data, size_t count) {
         g_editor.push_samples(data, count);
+    });
+    g_audio.set_error_callback([](const std::string& message) {
+        run_on_main([message] {
+            if (g_state == State::Open) g_editor.set_note(message);
+        });
     });
 
     g_hotkey.start();
