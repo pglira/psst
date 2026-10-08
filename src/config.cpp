@@ -41,6 +41,11 @@ Config load_config(const std::string& path) {
             }
         }
 
+        // stream
+        cfg.stream_enabled          = tbl["stream"]["enabled"].value_or(cfg.stream_enabled);
+        cfg.stream_pause_ms         = tbl["stream"]["pause_ms"].value_or(cfg.stream_pause_ms);
+        cfg.stream_max_utterance_ms = tbl["stream"]["max_utterance_ms"].value_or(cfg.stream_max_utterance_ms);
+
         // gpu
         cfg.gpu_enabled = tbl["gpu"]["enabled"].value_or(cfg.gpu_enabled);
         cfg.gpu_device  = tbl["gpu"]["device"].value_or(cfg.gpu_device);

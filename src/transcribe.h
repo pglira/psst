@@ -15,8 +15,11 @@ public:
 
     // Transcribe PCM audio (float32, 16kHz, mono).
     // Returns the transcribed text (all segments concatenated).
+    // `context` is text that precedes the audio; it conditions the style and
+    // spelling of the result.
     // Thread-safe: only one transcription runs at a time.
-    std::string transcribe(const std::vector<float>& pcm);
+    std::string transcribe(const std::vector<float>& pcm,
+                           const std::string& context = {});
 
     // Release model resources.
     void shutdown();

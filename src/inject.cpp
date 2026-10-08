@@ -11,7 +11,7 @@ extern "C" {
 }
 #endif
 
-static void inject_x11(const std::string& text, int type_delay_ms) {
+static void inject_x11(size_t backspaces, const std::string& text, int type_delay_ms) {
 #ifdef HAS_XDO
     xdo_t* xdo = xdo_new(nullptr);
     if (!xdo) {
@@ -30,14 +30,26 @@ static void inject_x11(const std::string& text, int type_delay_ms) {
     xdo_clear_active_modifiers(xdo, CURRENTWINDOW, active_mods, n_active_mods);
 
     useconds_t delay_us = static_cast<useconds_t>(type_delay_ms) * 1000;
-    xdo_enter_text_window(xdo, CURRENTWINDOW, text.c_str(), delay_us);
+    for (size_t i = 0; i < backspaces; ++i)
+        xdo_send_keysequence_window(xdo, CURRENTWINDOW, "BackSpace", delay_us);
+    if (!text.empty())
+        xdo_enter_text_window(xdo, CURRENTWINDOW, text.c_str(), delay_us);
 
     xdo_set_active_modifiers(xdo, CURRENTWINDOW, active_mods, n_active_mods);
     if (active_mods) free(active_mods);
     xdo_free(xdo);
-    std::cerr << "[inject] Typed via libxdo (" << text.size() << " chars)\n";
+    std::cerr << "[inject] Typed via libxdo (" << backspaces << " backspaces, "
+              << text.size() << " chars)\n";
 #else
     usleep(200'000);
+    if (backspaces > 0) {
+        std::string keys = "xdotool key --clearmodifiers --delay " +
+                           std::to_string(type_delay_ms) + " --repeat " +
+                           std::to_string(backspaces) + " BackSpace";
+        if (std::system(keys.c_str()) != 0)
+            std::cerr << "[inject] xdotool key failed\n";
+    }
+    if (text.empty()) return;
     char cmd[64];
     std::snprintf(cmd, sizeof(cmd),
                   "xdotool type --clearmodifiers --delay %d --file -",
@@ -56,8 +68,15 @@ static void inject_x11(const std::string& text, int type_delay_ms) {
 #endif
 }
 
-static void inject_wayland(const std::string& text) {
+static void inject_wayland(size_t backspaces, const std::string& text) {
     usleep(100'000);
+    if (backspaces > 0) {
+        std::string keys = "wtype";
+        for (size_t i = 0; i < backspaces; ++i) keys += " -k BackSpace";
+        if (std::system(keys.c_str()) != 0)
+            std::cerr << "[inject] wtype key failed\n";
+    }
+    if (text.empty()) return;
     FILE* proc = popen("wtype -", "w");
     if (!proc) {
         std::cerr << "[inject] Failed to run wtype\n";
@@ -72,13 +91,35 @@ static void inject_wayland(const std::string& text) {
 }
 
 void inject_text(const std::string& text, int type_delay_ms) {
-    if (text.empty()) return;
+    inject_edit(0, text, type_delay_ms);
+}
+
+void inject_edit(size_t backspaces, const std::string& text, int type_delay_ms) {
+    if (backspaces == 0 && text.empty()) return;
 
     std::string session = HotkeyListener::detect_session();
     if (session == "wayland")
-        inject_wayland(text);
+        inject_wayland(backspaces, text);
     else
-        inject_x11(text, type_delay_ms);
+        inject_x11(backspaces, text, type_delay_ms);
+}
+
+void inject_replace(const std::string& before, const std::string& after,
+                    int type_delay_ms) {
+    size_t common = 0;
+    while (common < before.size() && common < after.size() &&
+           before[common] == after[common])
+        ++common;
+    // Step back to the start of a UTF-8 character.
+    while (common > 0 && common < before.size() &&
+           (static_cast<unsigned char>(before[common]) & 0xC0) == 0x80)
+        --common;
+
+    size_t backspaces = 0;
+    for (size_t i = common; i < before.size(); ++i)
+        if ((static_cast<unsigned char>(before[i]) & 0xC0) != 0x80) ++backspaces;
+
+    inject_edit(backspaces, after.substr(common), type_delay_ms);
 }
 
 void inject_clipboard(const std::string& text) {

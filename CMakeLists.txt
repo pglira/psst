@@ -55,6 +55,7 @@ add_executable(psst
     src/transcribe.cpp
     src/inject.cpp
     src/punctuate.cpp
+    src/stream.cpp
 )
 
 target_include_directories(psst PRIVATE src)

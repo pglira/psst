@@ -41,6 +41,12 @@ std::vector<float> AudioRecorder::stop() {
     return std::move(samples_);
 }
 
+std::vector<float> AudioRecorder::copy_from(size_t from) {
+    std::lock_guard<std::mutex> lk(samples_mtx_);
+    if (from >= samples_.size()) return {};
+    return std::vector<float>(samples_.begin() + from, samples_.end());
+}
+
 void AudioRecorder::cancel() {
     cancel_.store(true);
     recording_.store(false);

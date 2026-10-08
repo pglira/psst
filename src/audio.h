@@ -15,6 +15,9 @@ public:
     // Stop recording. Returns the accumulated PCM samples (f32, 16kHz, mono).
     std::vector<float> stop();
 
+    // Copy the samples of the current recording from index `from` to its end.
+    std::vector<float> copy_from(size_t from);
+
     // Discard current recording without returning samples.
     void cancel();
 

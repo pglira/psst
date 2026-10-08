@@ -70,7 +70,8 @@ bool Transcriber::init(const Config& cfg) {
     return true;
 }
 
-std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
+std::string Transcriber::transcribe(const std::vector<float>& pcm_raw,
+                                    const std::string& context) {
     if (!ctx_ || pcm_raw.empty()) return {};
 
     std::vector<float> pcm = pcm_raw;
@@ -96,6 +97,11 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
             pcm[i] *= scale;
     }
 
+    // 3. Pad short audio with silence: whisper rejects input under 1 s.
+    const size_t min_samples = 16000 * 11 / 10;
+    if (pcm.size() < min_samples)
+        pcm.resize(min_samples, 0.0f);
+
     whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
     params.print_progress   = false;
     params.print_special    = false;
@@ -104,13 +110,24 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
 
     params.language = cfg_.language == "auto" ? "auto" : cfg_.language.c_str();
     params.translate = cfg_.translate;
-    if (!cfg_.initial_prompt.empty())
-        params.initial_prompt = cfg_.initial_prompt.c_str();
+    params.suppress_nst = true;
+    std::string prompt = cfg_.initial_prompt;
+    if (!context.empty()) {
+        // Keep the end of the context; whisper uses at most ~220 prompt tokens.
+        size_t from = context.size() > 400 ? context.size() - 400 : 0;
+        while (from < context.size() &&
+               (static_cast<unsigned char>(context[from]) & 0xC0) == 0x80)
+            ++from;
+        if (!prompt.empty()) prompt += ' ';
+        prompt += context.substr(from);
+    }
+    if (!prompt.empty())
+        params.initial_prompt = prompt.c_str();
 
     if (cfg_.threads > 0)
         params.n_threads = cfg_.threads;
 
-    std::cerr << "[whisper] Transcribing " << pcm.size() / 16000.0f
+    std::cerr << "[whisper] Transcribing " << pcm_raw.size() / 16000.0f
               << "s of audio...\n";
 
     std::lock_guard<std::mutex> lock(mtx_);
@@ -141,6 +158,7 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
     }
 
     whisper_free_state(state);
+    busy_.store(false);
 
     // Trim leading/trailing whitespace
     auto start = result.find_first_not_of(" \t\n\r");
@@ -149,7 +167,6 @@ std::string Transcriber::transcribe(const std::vector<float>& pcm_raw) {
     result = result.substr(start, end - start + 1);
 
     std::cerr << "[whisper] Result: \"" << result << "\"\n";
-    busy_.store(false);
     return result;
 }
 

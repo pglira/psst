@@ -32,14 +32,32 @@ initial_prompt = ""
 #   German:  Punkt, Komma, Doppelpunkt, Semikolon, Strichpunkt, Fragezeichen,
 #            Ausrufezeichen, Gedankenstrich, Bindestrich, neue Zeile,
 #            neuer Absatz, Klammer auf, Klammer zu
+# Built-in edit commands:
+#   English: delete word, delete last word, delete sentence, delete last sentence
+#   German:  Wort löschen, letztes Wort löschen, Satz löschen,
+#            letzten Satz löschen
+# false disables all spoken commands.
 enabled = true
 
 [punctuation.words]
 # Add or override commands: "spoken phrase" = "inserted text".
 # The inserted text includes its spacing, e.g. ": " or " (".
 # An empty value disables a built-in command.
+# The values "<delete-word>" and "<delete-sentence>" make edit commands.
 # "slash" = "/"
+# "scratch that" = "<delete-sentence>"
 # "Punkt" = ""
+
+[stream]
+# Type text while you speak: each utterance is transcribed and typed when
+# you pause. false = type all text after the recording stops.
+enabled = true
+
+# Silence in milliseconds that ends an utterance.
+pause_ms = 600
+
+# Utterances longer than this (milliseconds) are split at a quiet point.
+max_utterance_ms = 20000
 
 [gpu]
 # Use GPU acceleration (requires CUDA build)

@@ -16,6 +16,11 @@ struct Config {
     bool punctuation_enabled = true;
     std::map<std::string, std::string> punctuation_words;  // phrase → text
 
+    // stream (type text while speaking)
+    bool stream_enabled          = true;
+    int  stream_pause_ms         = 600;    // silence that ends an utterance
+    int  stream_max_utterance_ms = 20000;  // longer utterances are split
+
     // gpu
     bool gpu_enabled = true;
     int  gpu_device  = 0;

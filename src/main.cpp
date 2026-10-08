@@ -5,6 +5,7 @@
 #include "transcribe.h"
 #include "inject.h"
 #include "punctuate.h"
+#include "stream.h"
 
 #include <gtk/gtk.h>
 #include <iostream>
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <thread>
 #include <atomic>
+#include <memory>
 
 namespace fs = std::filesystem;
 
@@ -22,6 +24,45 @@ static HotkeyListener g_hotkey;
 static OverlayWindow g_overlay;
 static Transcriber  g_whisper;
 static std::atomic<bool> g_recording{false};
+static LiveDictation g_live;
+
+// ── Live dictation ──────────────────────────────────────────────────
+// Whisper writes non-speech sounds in brackets, e.g. "[BLANK_AUDIO]".
+static bool is_non_speech(const std::string& text) {
+    return text.size() >= 2 &&
+           ((text.front() == '[' && text.back() == ']') ||
+            (text.front() == '(' && text.back() == ')') ||
+            (text.front() == '*' && text.back() == '*'));
+}
+
+// Start a live session: each utterance is transcribed and typed while the
+// recording continues. `typed` holds the text typed in this session.
+static void start_live_session() {
+    auto typed = std::make_shared<std::string>();
+
+    auto fetch = [](size_t from) { return g_audio.copy_from(from); };
+
+    auto handle = [typed](const std::vector<float>& pcm,
+                          const std::atomic<bool>& cancelled) {
+        std::string text = g_whisper.transcribe(pcm, *typed);
+        if (text.empty() || is_non_speech(text) || cancelled.load()) return;
+
+        std::string next = append_transcript(*typed, text, g_cfg.punctuation_words,
+                                             g_cfg.punctuation_enabled);
+        std::cerr << "[punctuate] Result: \"" << next << "\"\n";
+        inject_replace(*typed, next, g_cfg.type_delay_ms);
+        *typed = std::move(next);
+    };
+
+    auto done = [typed](bool cancelled) {
+        std::cerr << "[app] Live session " << (cancelled ? "cancelled" : "done")
+                  << " (" << typed->size() << " chars)\n";
+        if (g_cfg.copy_to_clipboard && !cancelled && !typed->empty())
+            inject_clipboard(*typed);
+    };
+
+    g_live.start(g_cfg, fetch, handle, done);
+}
 
 // ── Toggle recording ────────────────────────────────────────────────
 static void on_toggle() {
@@ -32,6 +73,8 @@ static void on_toggle() {
             g_recording.store(true);
             g_audio.start();
             g_overlay.show();
+            if (g_cfg.stream_enabled)
+                start_live_session();
             std::cerr << "[app] Recording started\n";
         } else {
             // Stop recording → transcribe → inject
@@ -40,6 +83,10 @@ static void on_toggle() {
             std::cerr << "[app] Recording stopped, transcribing...\n";
 
             auto samples = g_audio.stop();
+            if (g_cfg.stream_enabled) {
+                g_live.finish(std::move(samples));
+                return FALSE;
+            }
             if (samples.empty()) {
                 std::cerr << "[app] No audio recorded\n";
                 return FALSE;
@@ -72,6 +119,7 @@ static void on_cancel() {
     if (g_recording.load()) {
         g_recording.store(false);
         g_audio.cancel();
+        g_live.cancel();
         g_overlay.hide();
         std::cerr << "[app] Recording cancelled\n";
     }
@@ -172,6 +220,8 @@ int main(int argc, char* argv[]) {
     std::cerr << "[app] Shutting down...\n";
     g_hotkey.stop();
     g_audio.shutdown();
+    g_live.cancel();
+    g_live.join();
     g_whisper.shutdown();
 
     // Remove PID file

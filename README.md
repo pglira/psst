@@ -1,14 +1,18 @@
 # psst
 
 Voice-to-text for Linux using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
-Press a hotkey to record, press it again to transcribe, text is pasted at cursor.
+Press a hotkey to record and speak; text is typed at the cursor each time you
+pause. Press the hotkey again to stop.
 
 ## Features
 
 - **Global hotkey** (default: `Super+V`) to toggle recording
 - **Real-time VU meter overlay** shown while recording (ESC to cancel)
 - **GPU-accelerated** transcription via whisper.cpp (CUDA)
-- **Paste at cursor** — transcribed text is typed into the focused window
+- **Live typing** — each utterance is typed into the focused window when you
+  pause, while the recording continues
+- **Edit commands** — say "delete word" or "delete sentence" (or "Wort
+  löschen", "Satz löschen") to remove text
 - **Spoken punctuation** — say "colon", "dash", "new line" (or "Doppelpunkt",
   "Gedankenstrich", "neue Zeile") to insert `:`, `–`, a line break
 - **Configurable** via TOML config file
@@ -104,6 +108,22 @@ Commands such as "Punkt", "period", or "Komma" also match the normal word
 A "new line" command types a Return key, which sends the message in many
 chat applications.
 
+### Live typing and edit commands
+
+With `[stream] enabled = true` (the default), psst types each utterance when
+you pause for `pause_ms` (600 ms). Commands work across utterances: "comma"
+at the start of an utterance replaces the period that Whisper put at the end
+of the previous one.
+
+| Say                          | Result                                  |
+|------------------------------|-----------------------------------------|
+| "delete word" / "Wort löschen"     | Removes the last word and its punctuation |
+| "delete sentence" / "Satz löschen" | Removes the last sentence             |
+
+psst edits with BackSpace key presses and only knows the text that it typed
+in the current recording. Do not move the cursor or type while you dictate,
+and the edit commands do not reach text from before the recording.
+
 ## Wayland Support
 
 Global hotkeys on pure Wayland (without XWayland) are not supported by the
@@ -130,7 +150,7 @@ Examples:
 │                      │                │          │
 │               ┌──────▼──────┐  ┌──────▼──────┐   │
 │               │ overlay     │  │ inject      │   │
-│               │ (VU meter)  │  │ (paste text)│   │
+│               │ (VU meter)  │  │ (type text) │   │
 │               └─────────────┘  └─────────────┘   │
 └──────────────────────────────────────────────────┘
 ```
