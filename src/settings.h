@@ -24,6 +24,7 @@ private:
         std::string value;    // accelerator, or psst hotkey format
         bool hotkey = false;  // psst hotkey format ("super+v")
         bool capturing = false;
+        guint modifier = 0;   // modifier key pressed alone during the capture
     };
 
     void load(const Config& cfg);
@@ -35,6 +36,7 @@ private:
     void set_key(KeyField& field, const std::string& value);
     void bind_key_field(KeyField& field);
     static gboolean on_key_capture(GtkWidget* widget, GdkEventKey* event, gpointer data);
+    static gboolean on_key_capture_release(GtkWidget* widget, GdkEventKey* event, gpointer data);
     static std::string key_label(const KeyField& field);
 
     std::string path_;

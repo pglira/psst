@@ -51,8 +51,9 @@ enabled = true
 [editor]
 # The hotkey opens the dictation editor. Hold talk_key to dictate; the text
 # goes in at the text cursor. Key bindings use the GTK accelerator format.
+# talk_key can also be a modifier key alone, e.g. "Alt_L" or "Control_R".
 # Escape cancels. The hotkey from [hotkey] also closes the editor and types.
-talk_key    = "<Control>space"         # hold to dictate
+talk_key    = "Alt_L"                  # hold to dictate (left Alt key)
 type_key    = "<Control>Return"        # close and type at the previous cursor
 copy_key    = "<Control><Shift>Return" # close and copy to the clipboard
 correct_key = "<Control>r"             # correct the selection (or all text) with an LLM

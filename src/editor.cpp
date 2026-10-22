@@ -34,6 +34,18 @@ std::string buffer_text(GtkTextBuffer* buffer, const GtkTextIter* from,
 bool attaches_to_previous(char c) {
     return c != '\0' && std::strchr(" \t\n.,;:!?)]", c) != nullptr;
 }
+
+// The modifier that a modifier key sets, or 0 for other keys.
+GdkModifierType modifier_of(guint keyval) {
+    switch (keyval) {
+    case GDK_KEY_Control_L: case GDK_KEY_Control_R: return GDK_CONTROL_MASK;
+    case GDK_KEY_Shift_L: case GDK_KEY_Shift_R:     return GDK_SHIFT_MASK;
+    case GDK_KEY_Alt_L: case GDK_KEY_Alt_R: case GDK_KEY_Meta_L: case GDK_KEY_Meta_R:
+        return GDK_MOD1_MASK;
+    case GDK_KEY_Super_L: case GDK_KEY_Super_R:     return GDK_SUPER_MASK;
+    default:                                        return GdkModifierType(0);
+    }
+}
 }
 
 EditorWindow::Key EditorWindow::parse_key(const std::string& accel) {
@@ -49,7 +61,9 @@ bool EditorWindow::matches(const Key& key, const GdkEventKey* event) {
     if (key.keyval == 0) return false;
     guint keyval = gdk_keyval_to_lower(event->keyval);
     if (keyval == GDK_KEY_KP_Enter) keyval = GDK_KEY_Return;
-    GdkModifierType mods = GdkModifierType(event->state & gtk_accelerator_get_default_mod_mask());
+    // A modifier key alone (e.g. Alt_L) sets its own modifier on key repeat.
+    GdkModifierType mods = GdkModifierType(event->state & gtk_accelerator_get_default_mod_mask()
+                                           & ~modifier_of(keyval));
     return keyval == key.keyval && mods == key.mods;
 }
 
@@ -566,18 +580,7 @@ bool EditorWindow::releases_talk_key(const GdkEventKey* event) const {
     guint keyval = gdk_keyval_to_lower(event->keyval);
     if (keyval == talk_key_.keyval) return true;
     // Releasing a modifier of the talk key also ends talking.
-    switch (keyval) {
-    case GDK_KEY_Control_L: case GDK_KEY_Control_R:
-        return talk_key_.mods & GDK_CONTROL_MASK;
-    case GDK_KEY_Shift_L: case GDK_KEY_Shift_R:
-        return talk_key_.mods & GDK_SHIFT_MASK;
-    case GDK_KEY_Alt_L: case GDK_KEY_Alt_R: case GDK_KEY_Meta_L: case GDK_KEY_Meta_R:
-        return talk_key_.mods & GDK_MOD1_MASK;
-    case GDK_KEY_Super_L: case GDK_KEY_Super_R:
-        return talk_key_.mods & GDK_SUPER_MASK;
-    default:
-        return false;
-    }
+    return talk_key_.mods & modifier_of(keyval);
 }
 
 gboolean EditorWindow::on_key_release(GtkWidget*, GdkEventKey* event, gpointer data) {

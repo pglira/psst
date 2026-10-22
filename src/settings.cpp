@@ -310,10 +310,12 @@ void SettingsWindow::bind_key_field(KeyField& field) {
                      G_CALLBACK(+[](GtkButton* button, gpointer data) {
                          auto* f = static_cast<KeyField*>(data);
                          f->capturing = true;
+                         f->modifier = 0;
                          gtk_button_set_label(button, key_label(*f).c_str());
                          gtk_widget_grab_focus(GTK_WIDGET(button));
                      }), &field);
     g_signal_connect(field.button, "key-press-event", G_CALLBACK(on_key_capture), &field);
+    g_signal_connect(field.button, "key-release-event", G_CALLBACK(on_key_capture_release), &field);
     g_signal_connect(field.button, "focus-out-event",
                      G_CALLBACK(+[](GtkWidget*, GdkEvent*, gpointer data) -> gboolean {
                          auto* f = static_cast<KeyField*>(data);
@@ -329,12 +331,15 @@ gboolean SettingsWindow::on_key_capture(GtkWidget*, GdkEventKey* event, gpointer
     auto* f = static_cast<KeyField*>(data);
     if (!f->capturing) return FALSE;
 
-    // Wait for the key that completes the combination.
+    // Wait for the key that completes the combination. A modifier key that
+    // is released without another key is the binding (key bindings only).
     switch (event->keyval) {
     case GDK_KEY_Shift_L: case GDK_KEY_Shift_R: case GDK_KEY_Control_L:
     case GDK_KEY_Control_R: case GDK_KEY_Alt_L: case GDK_KEY_Alt_R:
     case GDK_KEY_Super_L: case GDK_KEY_Super_R: case GDK_KEY_Meta_L:
     case GDK_KEY_Meta_R: case GDK_KEY_ISO_Level3_Shift:
+        if (!f->hotkey && f->modifier != event->keyval)
+            f->modifier = f->modifier ? GDK_KEY_VoidSymbol : event->keyval;
         return TRUE;
     case GDK_KEY_Escape:
         f->capturing = false;
@@ -365,6 +370,16 @@ gboolean SettingsWindow::on_key_capture(GtkWidget*, GdkEventKey* event, gpointer
         g_free(raw);
     }
     f->value = value;
+    f->capturing = false;
+    gtk_button_set_label(GTK_BUTTON(f->button), key_label(*f).c_str());
+    return TRUE;
+}
+
+gboolean SettingsWindow::on_key_capture_release(GtkWidget*, GdkEventKey* event, gpointer data) {
+    auto* f = static_cast<KeyField*>(data);
+    if (!f->capturing || f->modifier != event->keyval) return FALSE;
+    const char* name = gdk_keyval_name(event->keyval);
+    f->value = name ? name : "";
     f->capturing = false;
     gtk_button_set_label(GTK_BUTTON(f->button), key_label(*f).c_str());
     return TRUE;

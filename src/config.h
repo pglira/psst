@@ -17,7 +17,7 @@ struct Config {
     std::map<std::string, std::string> punctuation_words;  // phrase → text
 
     // editor (dictation window with an editable text field)
-    std::string editor_talk_key  = "<Control>space";  // hold to dictate
+    std::string editor_talk_key  = "Alt_L";  // hold to dictate
     std::string editor_type_key  = "<Control>Return";
     std::string editor_copy_key  = "<Control><Shift>Return";
     std::string editor_correct_key = "<Control>r";

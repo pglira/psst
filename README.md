@@ -1,14 +1,14 @@
 # psst
 
 Voice-to-text for Linux using [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
-Press a hotkey to open a dictation editor. Hold `Ctrl+Space` and speak; when
+Press a hotkey to open a dictation editor. Hold the left `Alt` key and speak; when
 you release it, the text goes into an editable text field at its cursor.
 Then type the text into the previous window, or copy it to the clipboard.
 
 ## Features
 
 - **Global hotkey** (default: `Super+V`) to open the dictation editor
-- **Push-to-talk** — hold `Ctrl+Space` to dictate; a VU meter shows the input
+- **Push-to-talk** — hold the left `Alt` key to dictate; a VU meter shows the input
 - **GPU-accelerated** transcription via whisper.cpp (CUDA)
 - **Dictation editor** — edit the text between dictations; type or copy it
   with buttons or key bindings
@@ -121,7 +121,7 @@ the text cursor. You can click into the text or edit it between dictations.
 
 | Key (default)       | Button | Action                                         |
 |---------------------|--------|------------------------------------------------|
-| `Ctrl+Space` (hold) | Talk   | Record while held; the text goes in at the cursor |
+| `Alt_L` (hold)      | Talk   | Record while held; the text goes in at the cursor |
 | `Ctrl+R`            | Correct | Correct the selection (or all text) with an LLM |
 | `Ctrl+Z`            | Undo   | Undo the last correction                       |
 | `Ctrl+Enter`        | Type   | Close and type the text into the previous window |
@@ -133,7 +133,8 @@ While the editor is open, the microphone stays open and psst keeps the last
 and Copy wait for the transcripts that are still running.
 
 The hotkey (`Super+V`) does the same as Type. Change the key bindings in
-`[editor]`. On Wayland, psst cannot give the focus back to the previous
+`[editor]`. The talk key can be a modifier key alone, e.g. `Alt_L` (left
+Alt) or `Control_R`. On Wayland, psst cannot give the focus back to the previous
 window; Type relies on the compositor to do it.
 
 ### LLM correction
